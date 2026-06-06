@@ -114,59 +114,53 @@ export function drawOpenWorldHud(r, player, miasma, progress, t, info) {
   ctx.fillRect(0, 0, GAME.width, 130);
   ctx.restore();
 
-  // 三属性条
+  // 左上角全局小地图
+  drawWorldMiniMap(r, player, info, t);
+
+  // 三属性条（小地图右侧）
+  const bx = 216;
   STATS.forEach((st, i) => {
-    const y = 14 + i * 22;
-    r.text(st.label, 16, y + 13, { size: 14, color: st.glow, weight: '700' });
-    drawBar(r, 58, y, 150, 16, player.stats[st.key] / STAT_MAX, st.color, st.glow);
-    r.text(`${player.stats[st.key] | 0}`, 216, y + 13, {
-      size: 13,
+    const y = 16 + i * 22;
+    r.text(st.label, bx, y + 13, { size: 13, color: st.glow, weight: '700' });
+    drawBar(r, bx + 40, y, 132, 16, player.stats[st.key] / STAT_MAX, st.color, st.glow);
+    r.text(`${player.stats[st.key] | 0}`, bx + 178, y + 13, {
+      size: 12,
       color: '#e8e0c8',
       weight: '700',
     });
   });
 
-  // 当前区域与探索进度
-  r.text(info.zone.label, GAME.width / 2, 25, {
+  // 当前场景名 + 取经进度（顶部中央）
+  r.text(info.zone.label, GAME.width / 2, 30, {
     size: 18,
     color: info.zone.edge,
     align: 'center',
     weight: '900',
     shadow: 'rgba(0,0,0,0.7)',
   });
-  r.text(info.zone.desc, GAME.width / 2, 48, {
-    size: 12,
-    color: '#cfc6e8',
-    align: 'center',
-    weight: '500',
-  });
-  const px = GAME.width / 2 - 150;
-  r.roundRect(px, 62, 300, 11, 5, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
-  r.roundRect(px + 2, 64, 296 * progress, 7, 4, '#ffce54');
-  r.text(`开放世界探索 ${Math.round(progress * 100)}%`, GAME.width / 2, 92, {
-    size: 12,
+  const px = GAME.width / 2 - 100;
+  r.roundRect(px, 50, 200, 10, 5, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
+  r.roundRect(px + 2, 52, 196 * progress, 6, 3, '#ffce54');
+  r.text(`取经进度 ${Math.round(progress * 100)}%`, GAME.width / 2, 76, {
+    size: 11,
     color: '#ffe9a8',
     align: 'center',
     weight: '700',
   });
 
-  // 妖气与经文
-  r.text('妖气', GAME.width - 296, 34, { size: 13, color: '#ff8a6a', weight: '700' });
-  r.roundRect(GAME.width - 252, 22, 118, 14, 4, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
+  // 妖气 / 经文 / 区域（右上）
+  const rx = GAME.width - 150;
+  r.text('妖气', rx, 24, { size: 13, color: '#ff8a6a', weight: '700' });
+  r.roundRect(rx + 36, 13, 100, 13, 4, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
   const mc = miasma < 0.5 ? '#d86bd0' : miasma < 0.8 ? '#e0533d' : '#ff3a2a';
-  r.roundRect(GAME.width - 250, 24, 114 * miasma, 10, 3, mc);
-  r.text(`经文残页 ${info.relics}`, GAME.width - 296, 60, {
-    size: 13,
-    color: '#e9dca8',
-    weight: '800',
-  });
-  r.text(`已发现 ${info.discovered.size}/${info.totalZones} 区域`, GAME.width - 296, 82, {
+  r.roundRect(rx + 38, 15, 96 * miasma, 9, 3, mc);
+  r.text(`经文残页 ${info.relics}`, rx, 48, { size: 13, color: '#e9dca8', weight: '800' });
+  r.text(`已历 ${info.discovered.size}/${info.totalZones} 处`, rx, 70, {
     size: 12,
     color: '#b6abd0',
     weight: '600',
   });
 
-  drawMiniMap(r, player, info);
   drawOpenWorldChips(r, player);
 
   if (info.message) {
@@ -193,46 +187,53 @@ export function drawOpenWorldHud(r, player, miasma, progress, t, info) {
   }
 }
 
-function drawMiniMap(r, player, info) {
-  const mapW = 136;
-  const mapH = 80;
-  const x = GAME.width - mapW - 16;
-  const y = GAME.height - mapH - 16;
-
-  r.roundRect(x - 6, y - 20, mapW + 12, mapH + 26, 8, 'rgba(10,8,18,0.82)', '#6b5a7e', 2);
-  r.text('场景舆图', x + mapW / 2, y - 5, {
+function drawWorldMiniMap(r, player, info, t) {
+  const scene = info.scene;
+  const camera = info.camera;
+  const panelX = 12;
+  const panelY = 12;
+  const panelW = 192;
+  const panelH = 132;
+  r.roundRect(panelX, panelY, panelW, panelH, 8, 'rgba(10,8,18,0.85)', scene.edge, 2);
+  r.text(`舆图 · ${scene.label}`, panelX + panelW / 2, panelY + 15, {
     size: 12,
     color: '#cfc6e8',
     align: 'center',
     weight: '800',
   });
-  r.rect(x, y, mapW, mapH, '#242033');
 
-  const nodes = [
-    { key: 'changan', x: 14, y: 54 },
-    { key: 'liusha', x: 38, y: 42 },
-    { key: 'huoyan', x: 66, y: 56 },
-    { key: 'pansi', x: 64, y: 22 },
-    { key: 'yaolin', x: 96, y: 34 },
-    { key: 'lingshan', x: 122, y: 18 },
-  ];
-  r.ctx.strokeStyle = 'rgba(255,206,84,0.35)';
-  r.ctx.lineWidth = 2;
-  r.ctx.beginPath();
-  nodes.forEach((n, i) => {
-    const px = x + n.x;
-    const py = y + n.y;
-    i === 0 ? r.ctx.moveTo(px, py) : r.ctx.lineTo(px, py);
-  });
-  r.ctx.stroke();
+  const mapX = panelX + 8;
+  const mapY = panelY + 24;
+  const mapW = 176;
+  const mapH = 99;
+  r.rect(mapX, mapY, mapW, mapH, info.floorColor || '#2d3326');
+  const sx = mapW / scene.w;
+  const sy = mapH / scene.h;
 
-  for (const lm of info.landmarks) {
-    const n = nodes.find((node) => node.key === lm.key);
-    if (!n) continue;
-    const discovered = info.discovered.has(lm.key);
-    const active = info.sceneKey === lm.key;
-    r.circle(x + n.x, y + n.y, active ? 5 : discovered ? 3 : 2, active ? '#fff2b0' : discovered ? '#ffce54' : '#6b627d');
+  // 出口与终点
+  for (const ex of scene.exits) {
+    r.rect(mapX + ex.x * sx, mapY + ex.y * sy, Math.max(3, ex.w * sx), Math.max(3, ex.h * sy), scene.edge);
   }
+  if (scene.goal) {
+    r.rect(mapX + scene.goal.x * sx, mapY + scene.goal.y * sy, Math.max(4, scene.goal.w * sx), Math.max(4, scene.goal.h * sy), '#ffce54');
+  }
+
+  // 收集物（亮点）与妖障（暗红点）
+  for (const p of info.pickups) r.rect(mapX + p.x * sx - 1, mapY + p.y * sy - 1, 3, 3, p.def.color);
+  for (const h of info.hazards) r.rect(mapX + h.x * sx - 1, mapY + h.y * sy - 1, 3, 3, h.def.color);
+
+  // 相机视口框
+  const ctx = r.ctx;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mapX + camera.x * sx, mapY + camera.y * sy, GAME.width * sx, GAME.height * sy);
+
+  // 玩家位置（闪烁）
+  const blink = 0.5 + 0.5 * Math.sin(t * 6);
+  ctx.globalAlpha = blink;
+  r.circle(mapX + player.x * sx, mapY + player.y * sy, 4.5, 'rgba(255,242,176,0.5)');
+  ctx.globalAlpha = 1;
+  r.circle(mapX + player.x * sx, mapY + player.y * sy, 2.5, '#fff2b0');
 }
 
 function drawOpenWorldChips(r, player) {

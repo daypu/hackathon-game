@@ -6,14 +6,15 @@ import { drawOpenWorldHud } from '../ui/hud.js';
 import { evaluate } from '../systems/ScoreSystem.js';
 import { ResultScene } from './ResultScene.js';
 import {
-  LANDMARKS,
   SCENES,
-  WORLD_BOUNDS,
   ZONES,
   drawOpenWorld,
   generateOpenWorldEntities,
   getZoneAt,
   isInRect,
+  makeCamera,
+  sceneBounds,
+  scenePalette,
   sceneProgress,
 } from '../openWorld.js';
 
@@ -38,10 +39,12 @@ export class PlayScene {
     this.state = 'playing'; // playing | paused | ending
     this.endTimer = 0;
     this.reached = false;
+    this.camera = makeCamera(this.player, this.currentScene);
+    this.transitionLock = 0.4;
     this.discovered = new Set(['changan']);
     this.currentZone = getZoneAt(this.player.x, this.player.y, this.sceneKey);
-    this.message = '固定场景探索已开启：踩到发光传送点即可切换到下一处。';
-    this.messageTimer = 4;
+    this.message = '大地图探索已开启：自由走动，相机会跟随，走到边缘传送点切换场景。';
+    this.messageTimer = 4.5;
     this.run = {
       hits: 0,
       picks: 0,
@@ -87,7 +90,8 @@ export class PlayScene {
       return;
     }
 
-    this.player.updateFree(dt, input, WORLD_BOUNDS);
+    this.player.updateFree(dt, input, sceneBounds(this.currentScene));
+    this.camera = makeCamera(this.player, this.currentScene);
     this.#updateZone();
 
     for (const h of this.hazards) h.update(dt, 0);
@@ -105,10 +109,11 @@ export class PlayScene {
     this.fx.update(dt);
     this.shake = Math.max(0, this.shake - dt);
     this.messageTimer = Math.max(0, this.messageTimer - dt);
+    this.transitionLock = Math.max(0, this.transitionLock - dt);
 
     if (this.player.isDead()) this.#beginEnd(false);
-    else if (this.#checkGoal()) this.#beginEnd(true);
-    else this.#checkTransitions();
+    else if (this.transitionLock <= 0 && this.#checkGoal()) this.#beginEnd(true);
+    else if (this.transitionLock <= 0) this.#checkTransitions();
   }
 
   #updateZone() {
@@ -147,10 +152,13 @@ export class PlayScene {
     this.currentScene = SCENES[sceneKey];
     this.#loadSceneEntities();
     this.player.setPosition(spawn.x, spawn.y);
+    this.player.grace = 0.6; // 进入新场景短暂护佑
+    this.camera = makeCamera(this.player, this.currentScene);
+    this.transitionLock = 0.4;
     this.currentZone = this.currentScene;
     this.miasma = this.currentScene.miasma;
-    this.message = label || `进入${this.currentScene.label}`;
-    this.messageTimer = 3;
+    this.message = label ? `${label} —— ${this.currentScene.desc}` : `进入${this.currentScene.label}`;
+    this.messageTimer = 3.5;
     this.g.audio.sfx('select');
     this.fx.reset();
     if (!this.discovered.has(sceneKey)) {
@@ -192,7 +200,7 @@ export class PlayScene {
         const dx = this.player.x - h.x;
         const dy = this.player.y - h.y;
         const len = Math.hypot(dx, dy) || 1;
-        this.player.push((dx / len) * 90, (dy / len) * 90, WORLD_BOUNDS);
+        this.player.push((dx / len) * 90, (dy / len) * 90, sceneBounds(this.currentScene));
       }
       if (def.effect === 'slow') this.player.applyWeb(1.6);
       if (def.effect === 'random') {
@@ -279,18 +287,23 @@ export class PlayScene {
       const s = this.shake * 10;
       ctx.translate((Math.random() * 2 - 1) * s, (Math.random() * 2 - 1) * s);
     }
-    drawOpenWorld(r, { x: 0, y: 0 }, { sceneKey: this.sceneKey, discovered: this.discovered }, t);
-    for (const p of this.pickups) p.draw(r);
-    for (const h of this.hazards) h.draw(r);
+    ctx.translate(-this.camera.x, -this.camera.y);
+    drawOpenWorld(r, this.currentScene, t);
+    for (const p of this.pickups) if (this.#visible(p, 80)) p.draw(r);
+    for (const h of this.hazards) if (this.#visible(h, 100)) h.draw(r);
     this.player.draw(r, t);
     this.fx.draw(r);
     ctx.restore();
 
     drawOpenWorldHud(r, this.player, this.miasma, this.#progress(), t, {
       zone: this.currentZone,
+      scene: this.currentScene,
+      camera: this.camera,
+      hazards: this.hazards,
+      pickups: this.pickups,
+      floorColor: scenePalette(this.sceneKey).base,
       discovered: this.discovered,
       totalZones: ZONES.length,
-      landmarks: LANDMARKS,
       nearLingshan: Boolean(this.currentScene.goal),
       message: this.messageTimer > 0 ? this.message : '',
       relics: this.run.picksByType.scripturePage || 0,
@@ -303,6 +316,15 @@ export class PlayScene {
 
   #progress() {
     return sceneProgress(this.sceneKey, this.discovered);
+  }
+
+  #visible(ent, pad) {
+    return (
+      ent.x > this.camera.x - pad &&
+      ent.x < this.camera.x + GAME.width + pad &&
+      ent.y > this.camera.y - pad &&
+      ent.y < this.camera.y + GAME.height + pad
+    );
   }
 
   #vignette(r, color) {

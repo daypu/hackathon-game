@@ -18,13 +18,13 @@ export const WORLD = {
   spawn: { x: 330, y: 1060 },
   // 不可通行实体；暂留空（自由探索），后续可按图加入山体/水域碰撞
   colliders: [],
-  // 5 个关卡触发法阵：花果山 → 高老庄 → 流沙河 → 火焰山 → 灵山雷音寺
+  // 5 个关卡触发法阵：放在各区域的地标建筑处（需离开主路上行进入），避免沿主路一条线走完
   levels: [
-    { key: 'huaguoshan', label: '花果山', desc: '美猴王的出身之地', x: 335, y: 858, r: 84, color: '#7fd06a' },
-    { key: 'gaolaozhuang', label: '高老庄', desc: '八戒入赘的村庄', x: 822, y: 854, r: 84, color: '#e8b84a' },
-    { key: 'liushahe', label: '流沙河', desc: '沙僧皈依之处', x: 1252, y: 900, r: 84, color: '#6fb0c8' },
-    { key: 'huoyanshan', label: '火焰山', desc: '烈焰难越的险关', x: 1692, y: 832, r: 84, color: '#e0533d' },
-    { key: 'leiyinsi', label: '灵山雷音寺', desc: '取经的终点', x: 2208, y: 742, r: 90, color: '#ffce54' },
+    { key: 'huaguoshan', label: '花果山', desc: '美猴王的出身之地', x: 285, y: 215, r: 60, color: '#7fd06a' },
+    { key: 'gaolaozhuang', label: '高老庄', desc: '八戒入赘的村庄', x: 795, y: 295, r: 60, color: '#e8b84a' },
+    { key: 'liushahe', label: '流沙河', desc: '沙僧皈依之处', x: 1295, y: 555, r: 60, color: '#6fb0c8' },
+    { key: 'huoyanshan', label: '火焰山', desc: '烈焰难越的险关', x: 1650, y: 590, r: 60, color: '#e0533d' },
+    { key: 'leiyinsi', label: '灵山雷音寺', desc: '取经的终点', x: 2255, y: 330, r: 64, color: '#ffce54' },
   ],
 };
 

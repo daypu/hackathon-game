@@ -1,5 +1,5 @@
 import { GAME, PICKUPS } from '../config.js';
-import { heroFrame, drawHero } from '../sprites/hero.js';
+import { TANGSENG, WUKONG, BAJIE, SHASENG, characterFrame, drawCharacter } from '../sprites/hero.js';
 import { World } from '../world.js';
 import { Pickup } from '../entities/Pickup.js';
 import { PlayScene } from './PlayScene.js';
@@ -48,17 +48,31 @@ export class MenuScene {
     this.world.draw(r, 0.35, t, 0);
     for (const p of this.ambient) p.draw(r);
 
-    // 孙悟空（月色像素）在营地前奔跑
-    const hx = 172;
+    // 四人动态队伍预览：游戏内仍先以悟空为主控，其他角色先作为动画素材接入。
+    const party = [
+      { sp: TANGSENG, x: 114, label: '唐僧' },
+      { sp: WUKONG, x: 162, label: '悟空' },
+      { sp: BAJIE, x: 214, label: '八戒' },
+      { sp: SHASENG, x: 268, label: '沙僧' },
+    ];
     const hy = GAME.roadBottom - 38; // 脚底所在 Y
-    ctx.save();
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(hx, hy + 1, 16, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    drawHero(r, heroFrame(true, t), hx, hy);
+    for (const member of party) {
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(member.x, hy + 1, member.sp.w + 2, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      drawCharacter(r, characterFrame(member.sp, true, t + member.x * 0.01), member.x, hy);
+      r.text(member.label, member.x, hy + 22, {
+        size: 10,
+        color: '#cfc6e8',
+        align: 'center',
+        weight: '700',
+        shadow: 'rgba(0,0,0,0.75)',
+      });
+    }
 
     // 标题遮罩
     ctx.fillStyle = 'rgba(8,6,16,0.45)';

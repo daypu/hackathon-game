@@ -24,21 +24,21 @@ export class StartScene {
     r.vgrad(0, 0, GAME.width, GAME.height, '#0c223a', '#133955');
 
     const blink = 0.45 + 0.55 * Math.sin(t * 4);
-    r.text('流沙河：木筏惊魂', GAME.width / 2, 170, {
+    r.text('流沙河：破船惊魂', GAME.width / 2, 170, {
       size: 54,
       color: '#ffce54',
       align: 'center',
       weight: '900',
       shadow: 'rgba(0,0,0,0.7)',
     });
-    r.text('目标：撑过 30 秒，不让木筏翻！', GAME.width / 2, 228, {
+    r.text('目标：撑过 30 秒，不让水怪追上！', GAME.width / 2, 228, {
       size: 18,
       color: '#fff2b0',
       align: 'center',
       weight: '900',
     });
 
-    const lines = ['A/D：左右稳船（核心）', 'Space：安抚唐僧', '1：修理木筏', '2：击退河怪'];
+    const lines = ['A/D：交替划船（核心）', 'Space：连点舀水', '1/2：顺序安抚', 'Q/E：击退妖怪'];
     lines.forEach((ln, i) => {
       r.text(ln, GAME.width / 2, 278 + i * 26, {
         size: 16,

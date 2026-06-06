@@ -7,10 +7,12 @@ const KEY_MAP = {
   KeyA: 'left',
   ArrowRight: 'right',
   KeyD: 'right',
-  Digit1: 'repair',
-  Numpad1: 'repair',
-  Digit2: 'attack',
-  Numpad2: 'attack',
+  Digit1: 'one',
+  Numpad1: 'one',
+  Digit2: 'two',
+  Numpad2: 'two',
+  KeyQ: 'q',
+  KeyE: 'e',
   Space: 'confirm',
   Enter: 'confirm',
   KeyP: 'pause',
@@ -78,4 +80,3 @@ export class Input {
     this.pointer.justDown = false;
   }
 }
-

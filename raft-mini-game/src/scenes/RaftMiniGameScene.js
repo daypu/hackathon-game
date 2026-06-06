@@ -1,8 +1,5 @@
-import { GAME, PAL } from '../config.js';
+import { GAME, PAL, TUNING } from '../config.js';
 import { clamp } from '../engine/utils.js';
-
-const ROUND_SECONDS = 30;
-const INTRO_SECONDS = 3;
 
 export class RaftMiniGameScene {
   constructor(game, opts = {}) {
@@ -10,6 +7,7 @@ export class RaftMiniGameScene {
     this.r = game.r;
     this.input = game.input;
     this.opts = opts;
+    this.fx = { p: [] };
   }
 
   enter() {
@@ -18,7 +16,8 @@ export class RaftMiniGameScene {
     this.message = '';
     this.messageTimer = 0;
     this._resetState();
-    this.introTimer = INTRO_SECONDS;
+    this.fx.p = [];
+    this.introTimer = TUNING.introSeconds;
   }
 
   _say(msg, t = 1.6) {
@@ -28,36 +27,54 @@ export class RaftMiniGameScene {
 
   _resetState() {
     this.state = {
-      raftAngle: 0,
-      raftVelocity: 0,
-      raftHP: 100,
-      monkFear: 20,
-      progress: 0,
       elapsed: 0,
+      progress: 0,
 
-      comfortCooldown: 0,
-      repairCooldown: 0,
-      attackCooldown: 0,
-      calmTimer: 0,
+      monsterDistance: TUNING.monster.startDistance,
+      boatSpeed: 0,
+      lastRowKey: null,
+      rowCombo: 0,
+      rowFeedbackTimer: 0,
 
-      repairing: false,
-      repairTimer: 0,
+      waterLevel: 0,
+      waveActive: false,
+      waveSide: null,
+      waveWarningTimer: 0,
+      waveImpactFlash: 0,
 
-      monsterActive: false,
-      monsterSide: null,
-      monsterDamageTimer: 0,
-      monsterSpawnTimer: 8,
+      monkFear: TUNING.fear.start,
+      dialogueActive: false,
+      dialogueSequence: [],
+      dialogueInput: [],
+      dialogueTimer: 0,
 
-      waveWarning: null,
-      waveSpawnTimer: 5,
+      frontDemonActive: false,
+      demonSide: null,
+      demonTimer: 0,
+      demonHitFlash: 0,
 
-      capsizeTimer: 0,
+      actionMode: 'idle',
+      actionLockTimer: 0,
 
-      maxAbsAngle: 0,
-      comfortCount: 0,
-      repairCount: 0,
-      monsterDefeatCount: 0,
-      highestFear: 20,
+      scriptEvents: this._makeScript(),
+
+      stats: {
+        rows: 0,
+        altRows: 0,
+        sameKey: 0,
+        maxCombo: 0,
+        bails: 0,
+        waveHits: 0,
+        dialogueStarted: 0,
+        dialogueSuccess: 0,
+        dialogueFail: 0,
+        demonSpawned: 0,
+        demonHit: 0,
+        demonMiss: 0,
+        demonFail: 0,
+      },
+
+      failReason: '',
     };
   }
 
@@ -75,12 +92,13 @@ export class RaftMiniGameScene {
 
   update(dt) {
     const input = this.input;
+    const T = TUNING;
 
     if (this.phase === 'intro') {
       this.introTimer = Math.max(0, this.introTimer - dt);
       if (input.just('confirm') || this.introTimer <= 0) {
         this.phase = 'playing';
-        this._say('按 A/D 稳住木筏！', 1.2);
+        this._say('A/D 交替划船，别让水怪追上！', 1.4);
       }
       return;
     }
@@ -110,222 +128,369 @@ export class RaftMiniGameScene {
     const s = this.state;
 
     s.elapsed += dt;
-    s.progress = clamp((s.elapsed / ROUND_SECONDS) * 100, 0, 100);
+    s.progress = clamp((s.elapsed / T.roundSeconds) * 100, 0, 100);
 
-    s.comfortCooldown = Math.max(0, s.comfortCooldown - dt);
-    s.repairCooldown = Math.max(0, s.repairCooldown - dt);
-    s.attackCooldown = Math.max(0, s.attackCooldown - dt);
-    s.calmTimer = Math.max(0, s.calmTimer - dt);
+    s.rowFeedbackTimer = Math.max(0, s.rowFeedbackTimer - dt);
+    s.waveImpactFlash = Math.max(0, s.waveImpactFlash - dt);
+    s.demonHitFlash = Math.max(0, s.demonHitFlash - dt);
+    s.actionLockTimer = Math.max(0, s.actionLockTimer - dt);
 
-    const axis = input.axisX();
-    const control = 92;
-    const damping = 0.86;
+    this._runScript();
+    this._updateWave(dt);
+    this._updateDialogue(dt);
+    this._updateFrontDemon(dt);
 
-    const drift = Math.sin(this.g.t * 1.15) * 18 + Math.sin(this.g.t * 2.4) * 10;
-    const fearFactor = s.calmTimer > 0 ? 0.35 : 1;
-    const fearShake = (Math.random() - 0.5) * 28 * (s.monkFear / 100) * fearFactor;
-    const monsterTorque = s.monsterActive ? this._sideSign(s.monsterSide) * 22 : 0;
-
-    s.raftVelocity += axis * control * dt;
-    s.raftVelocity += (drift + fearShake + monsterTorque) * dt;
-    s.raftVelocity *= Math.pow(damping, dt * 60);
-    s.raftAngle += s.raftVelocity * dt;
-    s.raftAngle = clamp(s.raftAngle, -55, 55);
-
-    const absA = Math.abs(s.raftAngle);
-    s.maxAbsAngle = Math.max(s.maxAbsAngle, absA);
-
-    if (absA > 30) s.raftHP = Math.max(0, s.raftHP - 2.2 * dt);
-
-    s.monkFear += 1.2 * dt;
-    if (absA > 15) s.monkFear += 6 * dt;
-    if (absA > 30) s.monkFear += 12 * dt;
-    if (s.raftHP < 70) s.monkFear += (70 - s.raftHP) * 0.03 * dt;
-    if (s.monsterActive) s.monkFear += 4 * dt;
-    s.monkFear = clamp(s.monkFear, 0, 100);
-    s.highestFear = Math.max(s.highestFear, s.monkFear);
-
-    if (input.just('confirm')) this._tryComfort();
-    if (input.just('repair')) this._tryStartRepair();
-    if (input.just('attack')) this._tryAttack();
-
-    this._updateRepair(dt, absA);
-    this._updateWaves(dt);
-    this._updateMonster(dt);
-
-    if (absA > 40) s.capsizeTimer += dt;
-    else s.capsizeTimer = 0;
-
-    if (s.raftHP <= 0) {
-      this.phase = 'failed';
-      this.result = { success: false, reason: 'broken' };
-      this._writeResult(false, 'broken');
-      this._say('木筏破碎！', 1.8);
-      return;
+    if (s.dialogueActive) {
+      const v = input.just('one') ? 1 : input.just('two') ? 2 : null;
+      if (v != null) this._dialoguePress(v);
+    } else if (s.frontDemonActive) {
+      const hit = input.just('q') ? 'left' : input.just('e') ? 'right' : null;
+      if (hit) this._tryHitDemon(hit);
+    } else {
+      if (input.just('confirm')) this._startBailing();
+      if (input.just('left')) this._row('left');
+      if (input.just('right')) this._row('right');
     }
 
-    if (s.capsizeTimer >= 1) {
-      this.phase = 'failed';
-      this.result = { success: false, reason: 'capsize' };
-      this._writeResult(false, 'capsize');
-      this._say('木筏翻了！', 1.8);
-      return;
-    }
+    s.boatSpeed = Math.max(0, s.boatSpeed - T.boat.speedDecayPerSec * dt);
+    s.boatSpeed = clamp(s.boatSpeed, 0, T.boat.speedMax);
 
-    if (s.elapsed >= ROUND_SECONDS) {
-      this.phase = 'success';
-      this.result = { success: true, reason: 'success' };
-      this._writeResult(true, 'success');
-      this._say('成功渡过流沙河！', 2.0);
-      return;
-    }
+    const chase = T.monster.chaseBase + T.monster.chaseRamp * clamp(s.elapsed / T.roundSeconds, 0, 1);
+    s.monsterDistance -= chase * dt;
+    s.monsterDistance += s.boatSpeed * dt;
+    s.monsterDistance = clamp(s.monsterDistance, 0, 120);
 
+    s.monkFear += T.fear.basePerSec * dt;
+    if (s.monsterDistance < T.monster.fearNearStart) {
+      const k = 1 - clamp(s.monsterDistance / T.monster.fearNearStart, 0, 1);
+      s.monkFear += T.monster.fearNearPerSec * k * dt;
+    }
+    if (s.waterLevel > 70) s.monkFear += (s.waterLevel - 70) * 0.02 * dt;
+    s.monkFear = clamp(s.monkFear, 0, T.fear.max);
+
+    if (s.monsterDistance <= 0) return this._fail('monster');
+    if (s.waterLevel >= T.water.max) return this._fail('water');
+    if (s.monkFear >= T.fear.max) return this._fail('fear');
+    if (s.elapsed >= T.roundSeconds) return this._success();
+
+    this._updateFx(dt);
     this.messageTimer = Math.max(0, this.messageTimer - dt);
   }
 
-  _tryComfort() {
+  _row(key) {
     const s = this.state;
-    if (s.comfortCooldown > 0) {
-      this._say('师父刚刚安定下来，稍后再安抚。', 1.6);
-      return;
+    const T = TUNING;
+    const st = s.stats;
+
+    s.actionMode = 'rowing';
+    s.actionLockTimer = T.action.rowingSeconds;
+
+    const same = s.lastRowKey === key;
+    const combo = same ? 0 : Math.min(T.rowing.comboMax, s.rowCombo + 1);
+    s.rowCombo = combo;
+    s.lastRowKey = key;
+
+    const comboFactor = 1 + combo * T.rowing.comboBonus;
+    const eff = same ? T.rowing.sameKeyFactor : comboFactor;
+    const push = T.rowing.basePush * eff;
+    s.boatSpeed = clamp(s.boatSpeed + push, 0, T.boat.speedMax);
+    s.rowFeedbackTimer = T.action.feedbackSeconds;
+
+    if (st) {
+      st.rows += 1;
+      if (same) st.sameKey += 1;
+      else st.altRows += 1;
+      st.maxCombo = Math.max(st.maxCombo, combo);
     }
-    s.monkFear = clamp(s.monkFear - 25, 0, 100);
-    s.calmTimer = 3;
-    s.comfortCooldown = 5;
-    s.comfortCount += 1;
-    this._say('唐僧慌了？按 Space 安抚！', 1.4);
+
+    const side = key === 'left' ? -1 : 1;
+    this._spawnFx('wake', GAME.width / 2 - side * 44, 410, side * -18, 24, 0.45, 8);
   }
 
-  _tryStartRepair() {
+  _startBailing() {
     const s = this.state;
-    if (s.repairCooldown > 0) {
-      this._say(`修理冷却：${s.repairCooldown.toFixed(1)}s`, 1.4);
-      return;
-    }
-    if (s.raftHP >= 100) {
-      this._say('木筏已满，不用修。', 1.4);
-      return;
-    }
-    if (Math.abs(s.raftAngle) > 15) {
-      this._say('木筏太晃！先稳住再按 1！', 1.6);
-      return;
-    }
-    s.repairing = true;
-    s.repairTimer = 1.2;
-    s.repairCooldown = 4;
-    this._say('修理中，保持平衡！', 1.4);
+    const T = TUNING;
+    s.actionMode = 'bailing';
+    s.actionLockTimer = T.action.bailingSeconds;
+    s.waterLevel = Math.max(0, s.waterLevel - T.water.bailAmount);
+    if (s.stats) s.stats.bails += 1;
+    this._spawnFx('spray', GAME.width / 2 + 26, 340, 90, -60, 0.5, 10);
   }
 
-  _updateRepair(dt, absA) {
-    const s = this.state;
-    if (!s.repairing) return;
-
-    if (absA > 15) {
-      s.repairing = false;
-      this._say('太晃了！修理被打断！', 1.6);
-      return;
-    }
-
-    s.repairTimer -= dt;
-    if (s.repairTimer <= 0) {
-      s.repairing = false;
-      s.raftHP = Math.min(100, s.raftHP + 15);
-      s.repairCount += 1;
-      this._say('修理完成！', 1.2);
+  _spawnFx(kind, x, y, vx, vy, life, count) {
+    const p = this.fx.p;
+    const t = this.g.t;
+    for (let i = 0; i < count; i++) {
+      const k = t * 13 + i * 17 + (kind === 'wake' ? 101 : 303);
+      const n1 = this._noise1D(k, 19);
+      const n2 = this._noise1D(k, 23);
+      p.push({
+        kind,
+        x: x + n1 * 10,
+        y: y + n2 * 8,
+        vx: vx + n1 * 40,
+        vy: vy + n2 * 30,
+        life,
+        age: 0,
+        r: kind === 'wake' || kind === 'wave' ? 3 + (n2 + 1) * 2 : 2 + (n2 + 1) * 2,
+      });
     }
   }
 
-  _tryAttack() {
-    const s = this.state;
-    if (s.attackCooldown > 0) return;
-    s.attackCooldown = 1;
-
-    if (!s.monsterActive) {
-      this._say('没有河怪，打了个空！', 1.4);
-      return;
-    }
-
-    s.monsterActive = false;
-    s.monsterSide = null;
-    s.monsterDamageTimer = 0;
-    s.monsterDefeatCount += 1;
-    this._say('河怪被击退了！', 1.4);
-  }
-
-  _updateMonster(dt) {
-    const s = this.state;
-
-    if (!s.monsterActive) {
-      s.monsterSpawnTimer -= dt;
-      if (s.progress > 35 && s.monsterSpawnTimer <= 0) {
-        s.monsterActive = true;
-        s.monsterSide = Math.random() < 0.5 ? 'left' : 'right';
-        s.monsterDamageTimer = 2;
-        s.monsterSpawnTimer = this._rand(7, 11);
-        this._say(`${this._sideLabel(s.monsterSide)}河怪！按 2！`, 1.6);
+  _updateFx(dt) {
+    const p = this.fx.p;
+    for (let i = p.length - 1; i >= 0; i--) {
+      const a = p[i];
+      a.age += dt;
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+      if (a.kind === 'wake') {
+        a.vx *= Math.pow(0.3, dt);
+        a.vy *= Math.pow(0.3, dt);
+      } else if (a.kind === 'wave') {
+        a.vx *= Math.pow(0.22, dt);
+        a.vy *= Math.pow(0.22, dt);
+      } else {
+        a.vx *= Math.pow(0.12, dt);
+        a.vy = a.vy * Math.pow(0.2, dt) + 90 * dt;
       }
+      if (a.age >= a.life) p.splice(i, 1);
+    }
+  }
+
+  _makeScript() {
+    return [
+      { t: 6.4, type: 'wave', side: 'left', done: false },
+      { t: 12.6, type: 'dialogue', seqLen: 2, maxSeconds: TUNING.dialogue.maxSeconds, done: false },
+      { t: 18.6, type: 'demon', side: 'left', done: false },
+      { t: 24.4, type: 'wave', side: 'right', done: false },
+      { t: 26.6, type: 'dialogue', seqLen: 2, maxSeconds: 2.2, done: false },
+      { t: 28.8, type: 'demon', side: 'right', done: false },
+    ];
+  }
+
+  _runScript() {
+    const s = this.state;
+    if (!s.scriptEvents) return;
+    if (this.phase !== 'playing') return;
+
+    const t = s.elapsed;
+    const busy = s.waveActive || s.dialogueActive || s.frontDemonActive;
+    if (busy) return;
+
+    for (const e of s.scriptEvents) {
+      if (e.done) continue;
+      if (t < e.t) break;
+      if (e.type === 'wave') this._startWave(e.side);
+      if (e.type === 'dialogue') this._startDialogue(e.seqLen, e.maxSeconds);
+      if (e.type === 'demon') this._startFrontDemon(e.side);
+      e.done = true;
+      break;
+    }
+  }
+
+  _startWave(side) {
+    const s = this.state;
+    const T = TUNING;
+    s.waveActive = true;
+    s.waveSide = side;
+    s.waveWarningTimer = T.wave.warningSeconds;
+    this._say(`${this._sideLabel(s.waveSide)}水浪！Space 舀水！`, 1.2);
+  }
+
+  _startDialogue(seqLen, maxSeconds) {
+    const s = this.state;
+    const T = TUNING;
+    s.dialogueActive = true;
+    s.dialogueInput = [];
+    s.dialogueSequence = this._makeSeq(seqLen);
+    s.dialogueTimer = Math.min(T.dialogue.maxSeconds, maxSeconds);
+    s.actionMode = 'comforting';
+    s.actionLockTimer = 0;
+    if (s.stats) s.stats.dialogueStarted += 1;
+    this._say(`安抚唐僧：${s.dialogueSequence.join(' → ')}`, 1.2);
+  }
+
+  _startFrontDemon(side) {
+    const s = this.state;
+    const T = TUNING;
+    s.frontDemonActive = true;
+    s.demonSide = side;
+    s.demonTimer = T.demon.activeSeconds;
+    if (s.stats) s.stats.demonSpawned += 1;
+    this._say(`${s.demonSide === 'left' ? '左前' : '右前'}妖怪！按 ${s.demonSide === 'left' ? 'Q' : 'E'}！`, 1.2);
+  }
+
+  _updateWave(dt) {
+    const s = this.state;
+    const T = TUNING;
+
+    if (!s.waveActive) return;
+
+    s.waveWarningTimer -= dt;
+    if (s.waveWarningTimer <= 0) {
+      s.waveActive = false;
+      s.waveWarningTimer = 0;
+      s.waveImpactFlash = 0.35;
+      s.waterLevel = Math.min(T.water.max, s.waterLevel + T.water.waveAdd);
+      s.monkFear = clamp(s.monkFear + T.fear.hitByWaveAdd, 0, T.fear.max);
+      if (s.stats) s.stats.waveHits += 1;
+      const side = s.waveSide === 'left' ? -1 : 1;
+      const x = GAME.width / 2 + side * 160;
+      this._spawnFx('wave', x, 310, -side * 120, 10, 0.6, 14);
+      this._spawnFx('spray', GAME.width / 2 + side * 64, 318, -side * 20, -80, 0.55, 10);
+    }
+  }
+
+  _updateDialogue(dt) {
+    const s = this.state;
+    const T = TUNING;
+
+    if (!s.dialogueActive) return;
+
+    s.dialogueTimer -= dt;
+    if (s.dialogueTimer <= 0) {
+      s.dialogueActive = false;
+      s.monkFear = clamp(s.monkFear + T.fear.comfortFailAdd, 0, T.fear.max);
+      if (s.stats) s.stats.dialogueFail += 1;
+      this._say('安抚超时！', 1.2);
+      s.actionMode = 'idle';
+    }
+  }
+
+  _dialoguePress(v) {
+    const s = this.state;
+    const T = TUNING;
+    if (!s.dialogueActive) return;
+
+    const idx = s.dialogueInput.length;
+    const need = s.dialogueSequence[idx];
+    if (v !== need) {
+      s.dialogueActive = false;
+      s.dialogueInput = [];
+      s.monkFear = clamp(s.monkFear + T.fear.comfortFailAdd, 0, T.fear.max);
+      if (s.stats) s.stats.dialogueFail += 1;
+      this._say('按错了！唐僧更慌了！', 1.3);
+      s.actionMode = 'idle';
       return;
     }
 
-    s.monsterDamageTimer -= dt;
-    if (s.monsterDamageTimer <= 0) {
-      s.raftHP = Math.max(0, s.raftHP - 8);
-      s.monkFear = clamp(s.monkFear + 15, 0, 100);
-      s.highestFear = Math.max(s.highestFear, s.monkFear);
-      s.monsterDamageTimer = 2;
-      this._say('河怪在破坏！按 2！', 1.2);
+    s.dialogueInput.push(v);
+    if (s.dialogueInput.length >= s.dialogueSequence.length) {
+      s.dialogueActive = false;
+      s.dialogueInput = [];
+      s.monkFear = clamp(s.monkFear - T.fear.comfortSuccessReduce, 0, T.fear.max);
+      if (s.stats) s.stats.dialogueSuccess += 1;
+      this._say('唐僧安定下来。', 1.1);
+      s.actionMode = 'idle';
     }
   }
 
-  _updateWaves(dt) {
+  _updateFrontDemon(dt) {
     const s = this.state;
+    const T = TUNING;
 
-    if (!s.waveWarning) {
-      s.waveSpawnTimer -= dt;
-      if (s.progress > 15 && s.waveSpawnTimer <= 0) {
-        s.waveWarning = { side: Math.random() < 0.5 ? 'left' : 'right', timer: 1 };
-        s.waveSpawnTimer = this._rand(5, 8);
-        this._say(`${this._sideLabel(s.waveWarning.side)}水浪预警！稳住！`, 1.2);
-      }
+    if (!s.frontDemonActive) return;
+
+    s.demonTimer -= dt;
+    if (s.demonTimer <= 0) {
+      s.frontDemonActive = false;
+      s.demonSide = null;
+      s.demonTimer = 0;
+      s.demonHitFlash = 0.45;
+      s.monkFear = clamp(s.monkFear + T.fear.hitByDemonAdd, 0, T.fear.max);
+      if (s.stats) s.stats.demonFail += 1;
+      this._say('妖怪袭击！唐僧受惊！', 1.2);
+      s.actionMode = 'idle';
+    }
+  }
+
+  _tryHitDemon(side) {
+    const s = this.state;
+    const T = TUNING;
+    s.actionMode = 'attacking';
+    s.actionLockTimer = T.action.attackingSeconds;
+    if (!s.frontDemonActive) return;
+    if (side !== s.demonSide) {
+      s.demonHitFlash = 0.35;
+      s.monkFear = clamp(s.monkFear + T.fear.hitByDemonAdd * 0.6, 0, T.fear.max);
+      if (s.stats) s.stats.demonMiss += 1;
+      this._say('打偏了！', 0.9);
       return;
     }
+    s.frontDemonActive = false;
+    s.demonSide = null;
+    s.demonTimer = 0;
+    if (s.stats) s.stats.demonHit += 1;
+    this._spawnFx('hit', GAME.width / 2 + (side === 'left' ? -220 : 220), 170, 0, -40, 0.5, 12);
+    this._say('击退妖怪！', 1.0);
+  }
 
-    s.waveWarning.timer -= dt;
-    if (s.waveWarning.timer <= 0) {
-      const side = s.waveWarning.side;
-      const impulse = side === 'left' ? 34 : -34;
-      s.raftVelocity += impulse;
-      s.raftHP = Math.max(0, s.raftHP - 5);
-      s.monkFear = clamp(s.monkFear + 10, 0, 100);
-      s.highestFear = Math.max(s.highestFear, s.monkFear);
-      s.waveWarning = null;
-      this._say('水浪冲击！稳住！', 1.2);
+  _makeSeq(n) {
+    const seq = [];
+    for (let i = 0; i < n; i++) seq.push(Math.random() < 0.5 ? 1 : 2);
+    return seq;
+  }
+
+  _randInt(a, b) {
+    return Math.floor(this._rand(a, b + 1));
+  }
+
+  _fail(reason) {
+    const s = this.state;
+    s.failReason = reason;
+    this.phase = 'failed';
+    this.result = { success: false, reason };
+    if (reason === 'monster') this._say('水怪追上破船！', 1.8);
+    if (reason === 'water') this._say('破船进水过多，沉没了！', 1.8);
+    if (reason === 'fear') this._say('唐僧惊慌过度！', 1.8);
+  }
+
+  _success() {
+    this.phase = 'success';
+    const score = this._computeScore();
+    const rank = this._getRank(score);
+    this.result = { success: true, reason: 'success', score, rank };
+    this.g.shared.lastScore = { score, rank, stats: this.state.stats };
+    this._say('成功渡过流沙河！', 2.0);
+  }
+
+  _getRank(score) {
+    const ranks = TUNING.score.ranks || [];
+    for (const r of ranks) {
+      if (score >= r.min) return r;
     }
+    return ranks[ranks.length - 1] || { grade: 'D', title: '险象环生', min: 0 };
   }
 
-  _getRating(success, reason) {
+  _computeScore() {
     const s = this.state;
-    if (!success && reason === 'capsize') return '流沙吞舟';
-    if (!success && reason === 'broken') return '木筏破碎';
-    if (s.raftHP > 80 && s.highestFear < 60 && s.maxAbsAngle < 28) return '稳如灵山';
-    if (s.raftHP > 50) return '有惊无险';
-    return '勉强渡河';
-  }
+    const T = TUNING;
+    const st = s.stats || {};
 
-  _writeResult(success, reason) {
-    const s = this.state;
-    this.g.shared.raftResult = {
-      success,
-      reason,
-      progress: Math.min(100, s.progress),
-      raftHP: Math.round(s.raftHP),
-      highestFear: Math.round(s.highestFear),
-      maxAbsAngle: Math.round(s.maxAbsAngle),
-      comfortCount: s.comfortCount,
-      repairCount: s.repairCount,
-      monsterDefeatCount: s.monsterDefeatCount,
-      rating: this._getRating(success, reason),
-    };
+    const dist = clamp(s.monsterDistance / T.monster.startDistance, 0, 1);
+    const water = clamp(1 - s.waterLevel / T.water.max, 0, 1);
+    const calm = clamp(1 - s.monkFear / T.fear.max, 0, 1);
+
+    let score = 0;
+    score += T.score.base;
+    score += dist * T.score.dist;
+    score += water * T.score.water;
+    score += calm * T.score.calm;
+
+    score += Math.min(st.maxCombo || 0, T.rowing.comboMax) * T.score.combo;
+    score += (st.bails || 0) * T.score.bail;
+
+    score += (st.dialogueSuccess || 0) * T.score.dialogueSuccess;
+    score -= (st.dialogueFail || 0) * T.score.dialogueFail;
+
+    score += (st.demonHit || 0) * T.score.demonHit;
+    score -= (st.demonFail || 0) * T.score.demonFail;
+    score -= (st.demonMiss || 0) * T.score.demonMiss;
+
+    score -= (st.sameKey || 0) * T.score.sameKeyPenalty;
+
+    return Math.round(clamp(score, 0, T.score.max));
   }
 
   _returnToStart() {
@@ -339,208 +504,461 @@ export class RaftMiniGameScene {
     const s = this.state;
     const W = GAME.width;
     const H = GAME.height;
+    const ctx = r.ctx;
 
-    r.vgrad(0, 0, W, H, '#0c223a', '#133955');
+    r.vgrad(0, 0, W, H, PAL.sand0, PAL.sand1);
+    this._drawRiver(r, this.g.t);
 
-    const t = this.g.t;
-    for (let i = 0; i < 14; i++) {
-      const y = 96 + i * 26;
-      const x = ((t * 54 + i * 120) % (W + 220)) - 220;
-      r.rect(x, y, 120, 3, 'rgba(110,190,220,0.26)');
-      r.rect(x + 40, y + 10, 80, 2, 'rgba(110,190,220,0.18)');
-    }
-
-    r.rect(0, 0, W, 110, 'rgba(5,4,10,0.55)');
-    r.rect(0, H - 96, W, 96, 'rgba(5,4,10,0.62)');
+    r.rect(0, 0, W, 92, 'rgba(5,4,10,0.55)');
+    r.rect(0, H - 104, W, 104, 'rgba(5,4,10,0.62)');
 
     this._drawTopHud(r, s);
-    this._drawRaft(r, s);
+    this._drawThreats(r, s);
+    this._drawFx(r, 'under');
+    this._drawBoat(r, s);
+    this._drawFx(r, 'over');
     this._drawBottomHud(r, s);
-
-    const absA = Math.abs(s.raftAngle);
-    if (absA > 30 && this.phase === 'playing') this._drawWarning(r, absA);
-
-    if (this.phase === 'playing') this._drawSideKeys(r, s);
     if (this.phase === 'playing') this._drawMainPrompt(r, s);
 
     if (this.phase === 'paused') this._drawPause(r);
     if (this.phase === 'failed') this._drawFailed(r);
     if (this.phase === 'success') this._drawSuccess(r);
     if (this.phase === 'intro') this._drawIntro(r);
+
+    ctx.save();
+    if (s.waveImpactFlash > 0) {
+      ctx.globalAlpha = clamp(s.waveImpactFlash / 0.35, 0, 1) * 0.18;
+      r.rect(0, 0, W, H, '#9fd0ff');
+    }
+    if (s.demonHitFlash > 0) {
+      ctx.globalAlpha = clamp(s.demonHitFlash / 0.45, 0, 1) * 0.22;
+      r.rect(0, 0, W, H, '#ff7a6a');
+    }
+    ctx.restore();
+  }
+
+  _drawFx(r, layer) {
+    const ctx = r.ctx;
+    const p = this.fx.p;
+    if (!p.length) return;
+
+    for (const a of p) {
+      const under = a.kind === 'wake' || a.kind === 'wave';
+      if ((layer === 'under') !== under) continue;
+
+      const t = clamp(1 - a.age / a.life, 0, 1);
+      if (a.kind === 'wake') {
+        ctx.save();
+        ctx.globalAlpha = 0.08 + t * 0.18;
+        r.circle(a.x, a.y, a.r + (1 - t) * 10, 'rgba(189,239,255,0.9)');
+        ctx.restore();
+      } else if (a.kind === 'wave') {
+        ctx.save();
+        ctx.globalAlpha = 0.1 + t * 0.22;
+        r.circle(a.x, a.y, a.r + (1 - t) * 14, 'rgba(110,190,220,0.9)');
+        ctx.restore();
+      } else if (a.kind === 'spray') {
+        ctx.save();
+        ctx.globalAlpha = 0.15 + t * 0.55;
+        r.circle(a.x, a.y, a.r, 'rgba(189,239,255,0.95)');
+        ctx.restore();
+      } else if (a.kind === 'hit') {
+        ctx.save();
+        ctx.globalAlpha = 0.18 + t * 0.6;
+        r.circle(a.x, a.y, a.r + (1 - t) * 6, 'rgba(255,206,84,0.95)');
+        ctx.restore();
+      }
+    }
   }
 
   _drawTopHud(r, s) {
-    const absA = Math.abs(s.raftAngle);
-    const danger = absA > 30;
-    r.text('流沙河：木筏惊魂', 18, 28, { size: 18, color: '#cfc6e8', weight: '900' });
+    const T = TUNING;
+    r.text('流沙河：破船惊魂', 18, 28, { size: 18, color: '#cfc6e8', weight: '900' });
 
-    const angleText = `倾斜 ${(s.raftAngle > 0 ? '+' : '') + (s.raftAngle | 0)}°`;
-    r.text(angleText, 18, 56, { size: 14, color: danger ? '#ff7a6a' : '#fff2b0', weight: '800' });
+    const remain = Math.max(0, T.roundSeconds - s.elapsed);
+    r.text(`剩余 ${Math.ceil(remain)}s`, 18, 56, { size: 14, color: '#fff2b0', weight: '800' });
 
-    const bx = 220;
+    const bx = 160;
     const by = 16;
-    const bw = 330;
-    const remain = Math.max(0, ROUND_SECONDS - s.elapsed);
-    r.text(`目标：撑过 ${ROUND_SECONDS}s   剩余 ${Math.ceil(remain)}s`, bx, by + 14, {
-      size: 13,
-      color: '#ffe9a8',
-      weight: '800',
-    });
+    const bw = 210;
+    r.text('水怪距离', bx, by + 14, { size: 13, color: '#9fd0ff', weight: '800' });
     r.roundRect(bx, by + 20, bw, 12, 6, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
-    r.roundRect(bx + 2, by + 22, (bw - 4) * clamp(s.elapsed / ROUND_SECONDS, 0, 1), 8, 4, '#ffce54');
+    const distRatio = clamp(s.monsterDistance / T.monster.startDistance, 0, 1);
+    const distColor = s.monsterDistance > 40 ? '#7ed957' : s.monsterDistance > 22 ? '#ffce54' : '#ff7a6a';
+    r.roundRect(bx + 2, by + 22, (bw - 4) * distRatio, 8, 4, distColor);
 
-    const hx = 570;
-    r.text(`耐久 ${Math.round(s.raftHP)}`, hx, by + 14, { size: 13, color: '#9fd0ff', weight: '800' });
-    r.roundRect(hx, by + 20, 160, 12, 6, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
-    const hpRatio = clamp(s.raftHP / 100, 0, 1);
-    const hpColor = s.raftHP > 60 ? '#7ed957' : s.raftHP > 30 ? '#ffce54' : '#ff7a6a';
-    r.roundRect(hx + 2, by + 22, (160 - 4) * hpRatio, 8, 4, hpColor);
+    const wx = 390;
+    r.text(`进水 ${Math.round(s.waterLevel)}`, wx, by + 14, { size: 13, color: '#9fd0ff', weight: '800' });
+    r.roundRect(wx, by + 20, 170, 12, 6, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
+    const waterRatio = clamp(s.waterLevel / T.water.max, 0, 1);
+    const waterColor = s.waterLevel < 35 ? '#7ed957' : s.waterLevel < 70 ? '#ffce54' : '#ff7a6a';
+    r.roundRect(wx + 2, by + 22, (170 - 4) * waterRatio, 8, 4, waterColor);
 
-    const fx = 760;
+    const fx = 585;
     r.text(`惊慌 ${Math.round(s.monkFear)}`, fx, by + 14, { size: 13, color: '#ff9a9a', weight: '800' });
     r.roundRect(fx, by + 20, 180, 12, 6, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.6)', 2);
-    const fearRatio = clamp(s.monkFear / 100, 0, 1);
-    const fearColor = s.monkFear < 40 ? '#7ed957' : s.monkFear < 70 ? '#ffce54' : '#ff7a6a';
+    const fearRatio = clamp(s.monkFear / T.fear.max, 0, 1);
+    const fearColor = s.monkFear < 45 ? '#7ed957' : s.monkFear < 75 ? '#ffce54' : '#ff7a6a';
     r.roundRect(fx + 2, by + 22, (180 - 4) * fearRatio, 8, 4, fearColor);
   }
 
-  _drawRaft(r, s) {
+  _drawRiver(r, t) {
+    const W = GAME.width;
+    for (let i = 0; i < 16; i++) {
+      const y = 118 + i * 22;
+      const x = ((t * 64 + i * 120) % (W + 220)) - 220;
+      r.rect(x, y, 140, 3, 'rgba(110,190,220,0.24)');
+      r.rect(x + 52, y + 10, 90, 2, 'rgba(110,190,220,0.14)');
+    }
+  }
+
+  _drawThreats(r, s) {
     const ctx = r.ctx;
     const cx = GAME.width / 2;
-    const cy = 310;
-    const ang = (s.raftAngle * Math.PI) / 180;
+    const W = GAME.width;
+
+    if (s.waveActive) {
+      const a = clamp(s.waveWarningTimer / TUNING.wave.warningSeconds, 0, 1);
+      const p = 1 - a;
+      const side = s.waveSide;
+      const x = side === 'left' ? 0 : W - 180;
+      r.roundRect(x + 18, 126, 162, 44, 12, `rgba(74,163,255,${0.12 + 0.22 * p})`, '#4aa3ff', 2);
+      r.text(`${this._sideLabel(side)}水浪！`, x + 99, 152, { size: 14, color: '#9fd0ff', align: 'center', weight: '900' });
+      r.text(`即将拍来 ${Math.max(0, s.waveWarningTimer).toFixed(1)}s`, x + 99, 170, { size: 12, color: '#cfc6e8', align: 'center', weight: '800' });
+
+      const wallW = 140;
+      const wallShift = p * 200;
+      const wallX = side === 'left' ? -wallW + wallShift : W - wallShift;
+      ctx.save();
+      ctx.globalAlpha = 0.18 + p * 0.2;
+      r.rect(wallX, 116, wallW, 360, 'rgba(74,163,255,0.65)');
+      ctx.globalAlpha = 0.22 + p * 0.24;
+      for (let i = 0; i < 18; i++) {
+        const yy = 132 + i * 18;
+        const ox = this._noise1D(this.g.t * 2 + i * 1.7, 501) * 10;
+        r.circle(wallX + (side === 'left' ? wallW - 18 : 18) + ox, yy, 8 + p * 8, 'rgba(189,239,255,0.85)');
+      }
+      ctx.restore();
+    }
+
+    if (s.frontDemonActive) {
+      const side = s.demonSide;
+      const x = side === 'left' ? cx - 220 : cx + 220;
+      r.roundRect(x - 70, 130, 140, 46, 12, 'rgba(20,14,28,0.65)', '#ff7a6a', 2);
+      r.text(`${side === 'left' ? '左前' : '右前'}妖怪`, x, 155, { size: 14, color: '#ff7a6a', align: 'center', weight: '900' });
+      r.text(`按 ${side === 'left' ? 'Q' : 'E'}`, x, 173, { size: 12, color: '#fff2b0', align: 'center', weight: '900' });
+
+      const ratio = clamp(s.demonTimer / TUNING.demon.activeSeconds, 0, 1);
+      r.roundRect(x - 56, 176, 112, 8, 4, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.4)', 1);
+      r.roundRect(x - 54, 178, 108 * ratio, 4, 3, '#ff7a6a');
+
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#2d1c2c';
+      ctx.beginPath();
+      ctx.moveTo(x, 120);
+      ctx.lineTo(x + (side === 'left' ? -24 : 24), 146);
+      ctx.lineTo(x, 152);
+      ctx.lineTo(x + (side === 'left' ? 18 : -18), 146);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const t = this.g.t;
+    const distRatio = clamp(s.monsterDistance / TUNING.monster.startDistance, 0, 1);
+    const my = 520 - distRatio * 160 + Math.sin(t * 2.2) * 4;
+    const mx = cx + Math.sin(t * 1.1) * 14;
+    ctx.save();
+    const near = 1 - distRatio;
+    ctx.globalAlpha = 0.7 + near * 0.3;
+    r.circle(mx, my, 26 + near * 14, 'rgba(20,14,28,0.65)');
+    r.circle(mx, my, 22 + near * 10, '#2d1c2c');
+    r.circle(mx - (8 + near * 3), my - 4, 4 + near * 2, '#ffce54');
+    r.circle(mx + (8 + near * 3), my - 4, 4 + near * 2, '#ffce54');
+    r.rect(mx - 10, my + 10, 20, 4, '#ff7a6a');
+    if (near > 0.65) {
+      ctx.globalAlpha = 0.12 + near * 0.18;
+      r.circle(cx, 330, 240, 'rgba(255,122,106,0.35)');
+    }
+    ctx.restore();
+  }
+
+  _drawBoat(r, s) {
+    const ctx = r.ctx;
+    const cx = GAME.width / 2;
+    const cy = 330;
+    const hullW = 240;
+    const hullH = 96;
+    const t = this.g.t;
+
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 56, 126, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(ang);
-    r.roundRect(-140, -26, 280, 52, 10, '#8b5a2b', '#2c1b0c', 3);
-    r.rect(-124, -14, 248, 10, '#b98145');
-    r.rect(-124, 6, 248, 10, '#b98145');
-    r.roundRect(-110, -40, 220, 10, 5, 'rgba(10,8,18,0.25)', null, 2);
+    r.roundRect(-hullW / 2, -hullH / 2, hullW, hullH, 30, PAL.wood0, PAL.outline, 3);
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = PAL.wood2;
+    ctx.beginPath();
+    ctx.moveTo(0, -hullH / 2 - 10);
+    ctx.lineTo(42, -hullH / 2 + 14);
+    ctx.lineTo(-42, -hullH / 2 + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, hullH / 2 + 10);
+    ctx.lineTo(38, hullH / 2 - 14);
+    ctx.lineTo(-38, hullH / 2 - 14);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
+
+    r.roundRect(-hullW / 2 + 18, -hullH / 2 + 20, hullW - 36, hullH - 40, 18, 'rgba(10,8,18,0.26)', 'rgba(0,0,0,0.25)', 2);
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 5; i++) {
+      const yy = -hullH / 2 + 26 + i * 14;
+      r.roundRect(-hullW / 2 + 26, yy, hullW - 52, 8, 4, 'rgba(255,255,255,0.08)', null, 1);
+    }
+    ctx.restore();
+
+    const waterRatio = clamp(s.waterLevel / TUNING.water.max, 0, 1);
+    if (waterRatio > 0.01) {
+      const ww = hullW - 44;
+      const wh = (hullH - 52) * waterRatio;
+      const wx = -ww / 2;
+      const wy = hullH / 2 - 26 - wh;
+      r.roundRect(wx, wy, ww, wh, 14, 'rgba(30,107,156,0.75)', null, 2);
+      const edge = wy + 6 + Math.sin(t * 6.2) * 2 + Math.sin(t * 3.1) * 1.2;
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = 'rgba(189,239,255,0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(wx + 10, edge);
+      ctx.quadraticCurveTo(0, edge - 5, wx + ww - 10, edge);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    this._drawBoatDamage(r, -hullW / 2, -hullH / 2, hullW, hullH, waterRatio);
+    this._drawBoatActions(r, s, hullW, hullH);
+    this._drawShaSeng(r, -52, -20, s);
+    this._drawTangSeng(r, 60, -20, s);
+    ctx.restore();
+  }
+
+  _drawBoatActions(r, s, hullW, hullH) {
+    const ctx = r.ctx;
+    const aRow = s.actionMode === 'rowing' ? clamp(s.rowFeedbackTimer / TUNING.action.feedbackSeconds, 0, 1) : 0;
+    if (aRow > 0.01) {
+      const side = s.lastRowKey === 'left' ? -1 : 1;
+      const k = 1 - aRow;
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = '#b9a47a';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(side * (hullW / 2 - 18), -8 + k * 6);
+      ctx.lineTo(side * (hullW / 2 + 62), -24 + k * 20);
+      ctx.stroke();
+      ctx.strokeStyle = '#7a6b52';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(side * (hullW / 2 + 62), -24 + k * 20);
+      ctx.lineTo(side * (hullW / 2 + 90), -34 + k * 28);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (s.actionMode === 'bailing') {
+      const a = clamp(s.actionLockTimer / TUNING.action.bailingSeconds, 0, 1);
+      const k = 1 - a;
+      ctx.save();
+      ctx.globalAlpha = 0.55 + k * 0.35;
+      r.roundRect(hullW / 2 - 54, 2 + k * 6, 22, 14, 6, 'rgba(245,239,224,0.8)', 'rgba(0,0,0,0.25)', 2);
+      ctx.strokeStyle = 'rgba(189,239,255,0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(hullW / 2 - 34, 18 + k * 6, 16, -0.2, Math.PI + 0.1);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (s.actionMode === 'attacking') {
+      const a = clamp(s.actionLockTimer / TUNING.action.attackingSeconds, 0, 1);
+      const k = 1 - a;
+      ctx.save();
+      ctx.globalAlpha = 0.25 + k * 0.45;
+      ctx.strokeStyle = 'rgba(255,206,84,0.75)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, -hullH / 2 - 8, 28 + k * 18, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  _drawBoatDamage(r, x0, y0, w, h, waterRatio) {
+    const ctx = r.ctx;
+    const dmg = clamp(waterRatio * 1.1, 0, 1);
+    if (dmg <= 0.02) return;
+    const glow = 0.25 + 0.35 * Math.sin(this.g.t * 10);
+    ctx.save();
+    ctx.globalAlpha = 0.5 + dmg * 0.35;
+    ctx.strokeStyle = `rgba(255,120,106,${0.2 + glow * 0.25})`;
+    ctx.lineWidth = 2;
+    const cracks = 2 + Math.floor(dmg * 3);
+    for (let i = 0; i < cracks; i++) {
+      const sx = x0 + 30 + i * 38 + this._noise1D(i * 3.2, 401) * 10;
+      const sy = y0 + 34 + this._noise1D(i * 2.1, 409) * 12;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 32 + this._noise1D(i * 1.3 + 1, 419) * 18, sy + 10 + this._noise1D(i * 1.3 + 2, 421) * 12);
+      ctx.lineTo(sx + 62 + this._noise1D(i * 1.3 + 3, 431) * 18, sy - 4 + this._noise1D(i * 1.3 + 4, 433) * 12);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawShaSeng(r, x, y, s) {
+    const ctx = r.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = 0.98;
+
+    r.circle(0, 30, 10, 'rgba(0,0,0,0.18)');
+    r.rect(-7, 10, 14, 22, PAL.teal0);
+    r.rect(-9, 18, 18, 16, PAL.teal1);
+    r.circle(0, 6, 12, PAL.skin);
+    r.circle(-4, 4, 2, PAL.ink);
+    r.circle(4, 4, 2, PAL.ink);
+    r.rect(-4, 10, 8, 2, 'rgba(20,14,28,0.6)');
+
+    if (s.actionMode === 'rowing' && s.rowFeedbackTimer > 0) {
+      const a = clamp(s.rowFeedbackTimer / TUNING.action.feedbackSeconds, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.2 + (1 - a) * 0.5;
+      r.roundRect(-24, 34, 48, 10, 6, 'rgba(126,217,87,0.25)', '#7ed957', 2);
+      ctx.restore();
+    }
 
     ctx.save();
-    ctx.globalAlpha = 0.28;
-    r.circle(cx, cy + 40, 120, '#000');
+    ctx.strokeStyle = '#7a6b52';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-18, 8);
+    ctx.lineTo(-18, 40);
+    ctx.stroke();
+    r.circle(-18, 6, 4, '#b9a47a');
     ctx.restore();
 
-    if (s.repairing) {
-      const w = 260;
-      const x = GAME.width / 2 - w / 2;
-      const y = 222;
-      r.roundRect(x, y, w, 14, 7, 'rgba(10,8,18,0.85)', PAL.gold, 2);
-      const ratio = clamp(1 - s.repairTimer / 1.2, 0, 1);
-      r.roundRect(x + 2, y + 2, (w - 4) * ratio, 10, 5, '#ffce54');
-      r.text('修理中…保持平衡', GAME.width / 2, y - 6, { size: 13, color: '#fff2b0', align: 'center', weight: '900' });
+    ctx.restore();
+  }
+
+  _drawTangSeng(r, x, y, s) {
+    const ctx = r.ctx;
+    const panic = clamp((s.monkFear - 55) / 45, 0, 1);
+    const jx = this._noise1D(this.g.t * 14, 71) * (0.4 + panic * 2);
+    const jy = this._noise1D(this.g.t * 18, 79) * (0.3 + panic * 1.6);
+
+    ctx.save();
+    ctx.translate(x + jx, y + jy);
+    ctx.globalAlpha = 0.98;
+
+    r.circle(0, 30, 10, 'rgba(0,0,0,0.18)');
+    r.rect(-8, 10, 16, 22, PAL.robeRed);
+    r.rect(-11, 18, 22, 16, PAL.robeGold);
+    r.circle(0, 6, 12, PAL.skin);
+    r.circle(-4, 4, 2, PAL.ink);
+    r.circle(4, 4, 2, PAL.ink);
+    r.rect(-5, 12, 10, 2, 'rgba(20,14,28,0.65)');
+    r.rect(-2, 18, 4, 10, 'rgba(245,239,224,0.8)');
+    r.rect(-6, 20, 4, 8, 'rgba(245,239,224,0.8)');
+    r.rect(2, 20, 4, 8, 'rgba(245,239,224,0.8)');
+
+    this._drawPanicEffects(r, 0, 0, panic);
+
+    if (s.dialogueActive) {
+      const n = s.dialogueSequence.length;
+      const done = s.dialogueInput.length;
+      const w = 22 * n + 18;
+      r.roundRect(-w / 2, -50, w, 30, 10, 'rgba(10,8,18,0.78)', '#ffce54', 2);
+      for (let i = 0; i < n; i++) {
+        const xx = -w / 2 + 10 + i * 22;
+        const hot = i === done;
+        const ok = i < done;
+        r.roundRect(xx, -42, 18, 18, 6, ok ? 'rgba(126,217,87,0.22)' : hot ? 'rgba(255,206,84,0.18)' : 'rgba(255,255,255,0.08)', ok ? '#7ed957' : hot ? '#ffce54' : 'rgba(255,255,255,0.14)', 2);
+        r.text(String(s.dialogueSequence[i]), xx + 9, -28, { size: 12, color: ok ? '#7ed957' : hot ? '#fff2b0' : '#cfc6e8', align: 'center', weight: '900' });
+      }
+      const ratio = clamp(s.dialogueTimer / TUNING.dialogue.maxSeconds, 0, 1);
+      r.roundRect(-w / 2 + 6, -24, w - 12, 6, 3, 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.35)', 1);
+      r.roundRect(-w / 2 + 6, -24, (w - 12) * ratio, 6, 3, '#ffce54');
     }
 
-    if (s.monkFear >= 70) {
-      const blink = s.monkFear >= 100 ? 0.35 + 0.65 * Math.sin(this.g.t * 10) : 1;
-      r.text('！', GAME.width / 2 + 66, 250, { size: 28, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.8)', alpha: blink });
-      r.text('唐僧慌了！按 Space', GAME.width / 2 + 66, 232, { size: 12, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.8)' });
-    }
+    ctx.restore();
+  }
 
-    if (s.waveWarning) {
-      const side = s.waveWarning.side;
-      const x = side === 'left' ? 70 : GAME.width - 70;
-      const alpha = clamp(s.waveWarning.timer / 1, 0, 1);
-      const sec = Math.max(0, s.waveWarning.timer);
-      r.roundRect(side === 'left' ? 16 : GAME.width - 136, 150, 120, 30, 10, `rgba(74,163,255,${0.22 + 0.28 * alpha})`, '#4aa3ff', 2);
-      r.text(`${this._sideLabel(side)}水浪！稳住`, x, 170, { size: 13, color: '#9fd0ff', align: 'center', weight: '900' });
-      r.text(`${sec.toFixed(1)}s`, x, 188, { size: 12, color: '#cfc6e8', align: 'center', weight: '800' });
-    }
+  _drawPanicEffects(r, x, y, panic) {
+    const ctx = r.ctx;
+    if (panic <= 0.01) return;
 
-    if (s.monsterActive) {
-      const side = s.monsterSide;
-      const x = side === 'left' ? 240 : GAME.width - 240;
-      r.roundRect(side === 'left' ? 120 : GAME.width - 260, 340, 140, 46, 10, 'rgba(20,14,28,0.65)', '#ff7a6a', 2);
-      r.text(`${this._sideLabel(side)}河怪！按 2`, x, 369, { size: 14, color: '#ff7a6a', align: 'center', weight: '900' });
-    }
+    const blink = 0.35 + 0.65 * Math.sin(this.g.t * (8 + panic * 6));
+    ctx.save();
+    ctx.globalAlpha = 0.7 + blink * 0.3;
+    r.text('！', x, y - 12, { size: 22, color: '#ff7a6a', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.8)' });
+    ctx.restore();
 
-    if (s.raftHP < 35) {
-      const absA = Math.abs(s.raftAngle);
-      const txt = absA > 15 ? '太晃了！先稳住' : '木筏破了！按 1';
-      r.text(txt, GAME.width / 2, 356, { size: 13, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.8)' });
+    const sweat = 1 + Math.floor(panic * 3);
+    ctx.save();
+    ctx.globalAlpha = 0.45 + 0.35 * blink;
+    for (let i = 0; i < sweat; i++) {
+      const sx = 12 + i * 4 + this._noise1D(this.g.t * 5 + i, 101) * 2;
+      const sy = 6 + i * 3 + this._noise1D(this.g.t * 6 + i, 109) * 2;
+      r.circle(x + sx, y + sy, 3, 'rgba(189,239,255,0.85)');
+      r.rect(x + sx - 1, y + sy + 2, 2, 6, 'rgba(189,239,255,0.65)');
     }
+    ctx.restore();
   }
 
   _drawBottomHud(r, s) {
-    const y = GAME.height - 88;
-    const bw = 210;
-    const bh = 66;
-    const gap = 18;
-    const startX = GAME.width / 2 - (bw * 3 + gap * 2) / 2;
+    const y = GAME.height - 96;
+    const rowHot = !s.dialogueActive && !s.frontDemonActive && s.monsterDistance < 28;
+    const bailHot = !s.dialogueActive && !s.frontDemonActive && (s.waterLevel > 55 || s.waveActive);
+    const comfortHot = s.dialogueActive;
+    const attackHot = s.frontDemonActive;
 
-    const spaceReady = s.comfortCooldown <= 0;
-    const spaceHot = s.monkFear > 70;
-    const spaceSub = spaceReady ? '可用' : `冷却 ${s.comfortCooldown.toFixed(1)}s`;
-
-    const absA = Math.abs(s.raftAngle);
-    const repairReady = s.repairCooldown <= 0 && s.raftHP < 100 && absA <= 15;
-    const repairHot = s.raftHP < 35 && absA <= 15;
-    const repairSub = s.repairCooldown > 0
-      ? `冷却 ${s.repairCooldown.toFixed(1)}s`
-      : s.raftHP >= 100
-        ? '已满'
-        : absA > 15
-          ? '太晃'
-          : '可修';
-
-    const attackReady = s.attackCooldown <= 0;
-    const attackHot = s.monsterActive;
-    const attackSub = s.attackCooldown > 0 ? `冷却 ${s.attackCooldown.toFixed(1)}s` : s.monsterActive ? '按 2！' : '暂无';
-
-    this._drawButtonCard(r, startX, y, bw, bh, 'Space', '安抚唐僧', spaceSub, spaceHot, !spaceReady);
-    this._drawButtonCard(r, startX + (bw + gap), y, bw, bh, '1', '修理木筏', repairSub, repairHot, !repairReady);
-    this._drawButtonCard(r, startX + (bw + gap) * 2, y, bw, bh, '2', '击退河怪', attackSub, attackHot, !(attackReady && s.monsterActive));
-
-    r.text('P/Esc：暂停', 18, GAME.height - 28, { size: 13, color: '#9a90b8', weight: '700' });
+    this._drawHintCard(r, 18, y + 10, 184, 34, 'A/D', '交替划船', rowHot);
+    this._drawHintCard(r, 18, y + 52, 184, 34, 'Space', '连点舀水', bailHot);
+    this._drawHintCard(r, 214, y + 10, 184, 34, '1/2', '顺序安抚', comfortHot);
+    this._drawHintCard(r, 214, y + 52, 184, 34, 'Q/E', '击退妖怪', attackHot);
+    r.text('P/Esc：暂停', GAME.width - 18, y + 50, { size: 13, color: '#9a90b8', align: 'right', weight: '800' });
 
     const msg = this.messageTimer > 0 ? this.message : '';
     if (msg) {
-      r.roundRect(160, GAME.height - 162, 640, 44, 10, 'rgba(10,8,18,0.82)', PAL.gold, 2);
-      r.text(msg, GAME.width / 2, GAME.height - 134, { size: 14, color: '#fff2b0', align: 'center', weight: '900' });
+      r.roundRect(160, GAME.height - 156, 640, 42, 10, 'rgba(10,8,18,0.82)', PAL.gold, 2);
+      r.text(msg, GAME.width / 2, GAME.height - 130, { size: 14, color: '#fff2b0', align: 'center', weight: '900' });
     }
   }
 
-  _drawButtonCard(r, x, y, w, h, key, title, sub, hot, dim) {
+  _drawHintCard(r, x, y, w, h, key, label, hot) {
     const ctx = r.ctx;
-    const blink = 0.5 + 0.5 * Math.sin(this.g.t * 6);
-    const edge = hot ? '#ffce54' : 'rgba(255,255,255,0.16)';
-    const fill = hot ? `rgba(255,206,84,${0.14 + blink * 0.08})` : 'rgba(10,8,18,0.78)';
-    ctx.save();
-    if (dim) ctx.globalAlpha = 0.65;
-    r.roundRect(x, y, w, h, 12, fill, edge, 2);
-    r.roundRect(x + 6, y + 6, w - 12, h - 12, 10, null, 'rgba(255,255,255,0.10)', 1);
-    r.text(key, x + 26, y + 36, { size: 26, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
-    r.text(title, x + 62, y + 30, { size: 14, color: '#cfc6e8', align: 'left', weight: '900' });
-    r.text(sub, x + 62, y + 52, { size: 12, color: hot ? '#fff2b0' : '#9a90b8', align: 'left', weight: '800' });
-    ctx.restore();
-  }
-
-  _drawSideKeys(r, s) {
-    const absA = Math.abs(s.raftAngle);
-    const need = absA < 4 ? null : s.raftAngle > 0 ? 'A' : 'D';
-    const more = absA > 30;
-    const blink = 0.45 + 0.55 * Math.sin(this.g.t * (more ? 10 : 6));
-
-    this._drawSideKeyCard(r, 22, 160, 132, 118, 'A', '向左稳', need === 'A', blink, absA);
-    this._drawSideKeyCard(r, GAME.width - 154, 160, 132, 118, 'D', '向右稳', need === 'D', blink, absA);
-  }
-
-  _drawSideKeyCard(r, x, y, w, h, key, sub, hot, blink, absA) {
-    const ctx = r.ctx;
-    const intense = absA > 40 ? 1 : absA > 30 ? 0.75 : 0.45;
-    const a = hot ? 0.18 + blink * 0.22 * intense : 0.06;
-    const edge = hot ? '#ffce54' : 'rgba(255,255,255,0.10)';
-    r.roundRect(x, y, w, h, 14, `rgba(255,206,84,${a})`, edge, 2);
-    r.roundRect(x + 8, y + 8, w - 16, h - 16, 12, null, 'rgba(255,255,255,0.10)', 1);
-    r.text(key, x + w / 2, y + 58, { size: 56, color: hot ? '#fff2b0' : '#cfc6e8', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
-    r.text(sub, x + w / 2, y + 92, { size: 14, color: hot ? '#fff2b0' : '#9a90b8', align: 'center', weight: '900' });
-    if (hot && absA > 30) {
+    const blink = 0.5 + 0.5 * Math.sin(this.g.t * 7);
+    const a = hot ? 0.16 + blink * 0.12 : 0.06;
+    r.roundRect(x, y, w, h, 10, `rgba(255,206,84,${a})`, hot ? '#ffce54' : 'rgba(255,255,255,0.12)', 2);
+    r.text(key, x + 30, y + 23, { size: 16, color: hot ? '#fff2b0' : '#cfc6e8', align: 'center', weight: '900' });
+    r.text(label, x + 58, y + 23, { size: 14, color: hot ? '#fff2b0' : '#cfc6e8', align: 'left', weight: '900' });
+    if (hot) {
       ctx.save();
-      ctx.globalAlpha = 0.6 + blink * 0.4;
-      r.text('现在按！', x + w / 2, y + 20, { size: 12, color: '#ffce54', align: 'center', weight: '900' });
+      ctx.globalAlpha = 0.35 + blink * 0.35;
+      r.text('现在！', x + w - 28, y + 23, { size: 12, color: '#ffce54', align: 'center', weight: '900' });
       ctx.restore();
     }
   }
@@ -549,36 +967,18 @@ export class RaftMiniGameScene {
     const prompt = this._getMainPrompt(s);
     if (!prompt) return;
     const blink = 0.5 + 0.5 * Math.sin(this.g.t * 8);
-    r.roundRect(GAME.width / 2 - 290, 118, 580, 40, 12, `rgba(10,8,18,${0.62 + blink * 0.12})`, '#ffce54', 2);
-    r.text(prompt, GAME.width / 2, 145, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
+    r.roundRect(GAME.width / 2 - 300, 96, 600, 40, 12, `rgba(10,8,18,${0.58 + blink * 0.12})`, '#ffce54', 2);
+    r.text(prompt, GAME.width / 2, 123, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
   }
 
   _getMainPrompt(s) {
-    const absA = Math.abs(s.raftAngle);
-    if (absA > 40) {
-      const key = s.raftAngle > 0 ? 'A' : 'D';
-      return `快翻了！按 ${key} 拉回来！`;
-    }
-    if (s.monsterActive) return `${this._sideLabel(s.monsterSide)}河怪！按 2！`;
-    if (s.monkFear > 80) return '唐僧慌了！按 Space！';
-    if (s.raftHP < 35) {
-      if (absA > 15) return '木筏破了！先稳住！';
-      return '木筏破了！平稳后按 1！';
-    }
-    if (s.waveWarning) return `${this._sideLabel(s.waveWarning.side)}水浪！稳住！`;
+    if (s.dialogueActive) return '按 1/2 完成安抚序列';
+    if (s.frontDemonActive) return `前方妖怪！按 ${s.demonSide === 'left' ? 'Q' : 'E'}！`;
+    if (s.waterLevel > 55) return '进水了！连点 Space 舀水！';
+    if (s.monsterDistance < 26) return '水怪逼近！A/D 交替划船！';
+    if (s.waveActive) return `${this._sideLabel(s.waveSide)}水浪！准备舀水！`;
     if (this.messageTimer > 0) return null;
-    return '先稳住木筏，再处理危机！';
-  }
-
-  _drawWarning(r, absA) {
-    const ctx = r.ctx;
-    const strength = clamp((absA - 30) / 25, 0, 1);
-    const a = 0.15 + strength * 0.35;
-    const g = ctx.createRadialGradient(GAME.width / 2, GAME.height / 2, 160, GAME.width / 2, GAME.height / 2, 520);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, `rgba(140,0,0,${a})`);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, GAME.width, GAME.height);
+    return '护送唐僧渡河：划船、舀水、安抚、击退！';
   }
 
   _drawPause(r) {
@@ -589,33 +989,55 @@ export class RaftMiniGameScene {
 
   _drawFailed(r) {
     r.rect(0, 0, GAME.width, GAME.height, 'rgba(5,4,10,0.7)');
-    const title = this.result?.reason === 'broken' ? '木筏破碎！' : '木筏翻了！';
+    const reason = this.result?.reason;
+    const title = reason === 'monster' ? '水怪追上破船！' : reason === 'water' ? '破船沉没了！' : '唐僧惊慌过度！';
     r.text(title, GAME.width / 2, GAME.height / 2 - 44, { size: 44, color: '#ff7a6a', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
-    const reason = this.result?.reason === 'broken' ? '原因：木筏耐久归零' : '原因：倾斜超过 ±40° 太久';
-    const tip = this.result?.reason === 'broken' ? '提示：耐久低时找平稳窗口按 1 修理' : '提示：优先用 A/D 稳住木筏';
-    r.text(reason, GAME.width / 2, GAME.height / 2 + 0, { size: 14, color: '#cfc6e8', align: 'center', weight: '800' });
-    r.text(tip, GAME.width / 2, GAME.height / 2 + 24, { size: 14, color: '#fff2b0', align: 'center', weight: '800' });
-    r.text('Space / Enter：重新挑战', GAME.width / 2, GAME.height / 2 + 62, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
-    r.text('Esc：返回开始界面', GAME.width / 2, GAME.height / 2 + 88, { size: 14, color: '#cfc6e8', align: 'center', weight: '700' });
+    const tip = reason === 'monster'
+      ? '提示：A/D 交替划船拉开距离'
+      : reason === 'water'
+        ? '提示：水浪后连点 Space 舀水'
+        : '提示：对话出现时按 1/2 序列安抚';
+    r.text(tip, GAME.width / 2, GAME.height / 2 + 16, { size: 14, color: '#fff2b0', align: 'center', weight: '800' });
+    const s = this.state;
+    const lines = [
+      `水怪距离：${Math.round(s.monsterDistance)} / ${TUNING.monster.startDistance}`,
+      `进水值：${Math.round(s.waterLevel)} / ${TUNING.water.max}`,
+      `惊慌值：${Math.round(s.monkFear)} / ${TUNING.fear.max}`,
+    ];
+    lines.forEach((ln, i) => {
+      r.text(ln, GAME.width / 2, GAME.height / 2 + 42 + i * 18, { size: 13, color: '#cfc6e8', align: 'center', weight: '800' });
+    });
+    r.text('Space / Enter：重新挑战', GAME.width / 2, GAME.height / 2 + 112, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
+    r.text('Esc：返回开始界面', GAME.width / 2, GAME.height / 2 + 138, { size: 14, color: '#cfc6e8', align: 'center', weight: '700' });
   }
 
   _drawSuccess(r) {
     r.rect(0, 0, GAME.width, GAME.height, 'rgba(5,4,10,0.7)');
     r.text('成功渡过流沙河！', GAME.width / 2, GAME.height / 2 - 56, { size: 40, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
-    const rating = this.g.shared.raftResult?.rating || '有惊无险';
     const s = this.state;
-    r.text('你完成了：', GAME.width / 2, GAME.height / 2 - 20, { size: 14, color: '#cfc6e8', align: 'center', weight: '900' });
+    r.text('你护送唐僧安全抵达彼岸。', GAME.width / 2, GAME.height / 2 - 14, { size: 14, color: '#cfc6e8', align: 'center', weight: '900' });
+    const score = this.result?.score ?? this._computeScore();
+    const rank = this.result?.rank ?? this._getRank(score);
+    r.text(`评分 ${score}   ${rank.grade} · ${rank.title}`, GAME.width / 2, GAME.height / 2 + 12, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.65)' });
     const lines = [
-      `坚持渡河：${ROUND_SECONDS} 秒`,
-      `安抚唐僧：${s.comfortCount} 次   修理木筏：${s.repairCount} 次`,
-      `击退河怪：${s.monsterDefeatCount} 次   最大倾斜：${Math.round(s.maxAbsAngle)}°`,
-      `评级：${rating}`,
+      `剩余距离：${Math.round(s.monsterDistance)} / ${TUNING.monster.startDistance}`,
+      `船舱进水：${Math.round(s.waterLevel)} / ${TUNING.water.max}`,
+      `唐僧惊慌：${Math.round(s.monkFear)} / ${TUNING.fear.max}`,
     ];
     lines.forEach((ln, i) => {
-      r.text(ln, GAME.width / 2, GAME.height / 2 + 4 + i * 18, { size: 13, color: i === 3 ? '#fff2b0' : '#cfc6e8', align: 'center', weight: '800' });
+      r.text(ln, GAME.width / 2, GAME.height / 2 + 40 + i * 18, { size: 13, color: '#cfc6e8', align: 'center', weight: '800' });
     });
-    r.text('Space / Enter：重新挑战', GAME.width / 2, GAME.height / 2 + 94, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
-    r.text('Esc：返回开始界面', GAME.width / 2, GAME.height / 2 + 120, { size: 14, color: '#cfc6e8', align: 'center', weight: '700' });
+    const st = s.stats || {};
+    const perf = [
+      `最大连击：${st.maxCombo || 0}`,
+      `安抚成功：${st.dialogueSuccess || 0}  失败：${st.dialogueFail || 0}`,
+      `击退妖怪：${st.demonHit || 0}  失误：${st.demonMiss || 0}  被打中：${st.demonFail || 0}`,
+    ];
+    perf.forEach((ln, i) => {
+      r.text(ln, GAME.width / 2, GAME.height / 2 + 100 + i * 18, { size: 12, color: '#9a90b8', align: 'center', weight: '800' });
+    });
+    r.text('Space / Enter：重新挑战', GAME.width / 2, GAME.height / 2 + 164, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
+    r.text('Esc：返回开始界面', GAME.width / 2, GAME.height / 2 + 190, { size: 14, color: '#cfc6e8', align: 'center', weight: '700' });
   }
 
   _drawIntro(r) {
@@ -629,16 +1051,16 @@ export class RaftMiniGameScene {
     r.roundRect(x, y, w, h, 16, 'rgba(10,8,18,0.92)', '#ffce54', 3);
     r.roundRect(x + 10, y + 10, w - 20, h - 20, 12, null, 'rgba(255,255,255,0.14)', 1);
 
-    r.text('流沙河：木筏惊魂', GAME.width / 2, y + 56, { size: 34, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
-    r.text(`目标：撑过 ${ROUND_SECONDS} 秒，不让木筏翻！`, GAME.width / 2, y + 96, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
+    r.text('流沙河：破船惊魂', GAME.width / 2, y + 56, { size: 34, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
+    r.text(`目标：撑过 ${TUNING.roundSeconds} 秒，不让水怪追上！`, GAME.width / 2, y + 96, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
 
     const left = x + 92;
     const top = y + 140;
     const items = [
-      ['A / D', '左右稳船（核心）'],
-      ['Space', '安抚唐僧'],
-      ['1', '修理木筏'],
-      ['2', '击退河怪'],
+      ['A / D', '交替划船（核心）'],
+      ['Space', '连点舀水'],
+      ['1 / 2', '顺序安抚'],
+      ['Q / E', '击退妖怪'],
     ];
     items.forEach((it, i) => {
       const iy = top + i * 42;
@@ -647,7 +1069,7 @@ export class RaftMiniGameScene {
       r.text(it[1], left + 122, iy + 2, { size: 15, color: '#cfc6e8', align: 'left', weight: '800' });
     });
 
-    r.text('提示：先稳住木筏，再处理危机！', GAME.width / 2, y + h - 72, { size: 15, color: '#cfc6e8', align: 'center', weight: '900' });
+    r.text('提示：先拉开水怪距离，再处理危机！', GAME.width / 2, y + h - 72, { size: 15, color: '#cfc6e8', align: 'center', weight: '900' });
     const remain = Math.ceil(this.introTimer);
     const blink = 0.45 + 0.55 * Math.sin(this.g.t * 6);
     ctx.save();
@@ -655,5 +1077,21 @@ export class RaftMiniGameScene {
     r.text(`${remain} 秒后开始 / 按 Space 立即开始`, GAME.width / 2, y + h - 34, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
     ctx.restore();
   }
-}
 
+  _noise1D(x, seed = 0) {
+    const i = Math.floor(x);
+    const f = x - i;
+    const a = this._hashToUnit(i + seed * 101);
+    const b = this._hashToUnit(i + 1 + seed * 101);
+    const u = f * f * (3 - 2 * f);
+    return (a + (b - a) * u) * 2 - 1;
+  }
+
+  _hashToUnit(n) {
+    let x = n | 0;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    return ((x >>> 0) % 100000) / 100000;
+  }
+}

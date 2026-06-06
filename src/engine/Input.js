@@ -1,4 +1,5 @@
 // 键盘 + 指针输入，提供 isDown / justPressed 查询
+import { GAME } from '../config.js';
 
 const KEY_MAP = {
   ArrowUp: 'up',
@@ -37,11 +38,10 @@ export class Input {
 
     if (canvas) {
       const toLocal = (e) => {
-        const r = canvas.getBoundingClientRect();
-        const sx = canvas.width / r.width;
-        const sy = canvas.height / r.height;
-        this.pointer.x = (e.clientX - r.left) * sx;
-        this.pointer.y = (e.clientY - r.top) * sy;
+        const rect = canvas.getBoundingClientRect();
+        // 映射到逻辑坐标（与画布物理分辨率 / DPR 无关）
+        this.pointer.x = ((e.clientX - rect.left) / rect.width) * GAME.width;
+        this.pointer.y = ((e.clientY - rect.top) / rect.height) * GAME.height;
       };
       canvas.addEventListener('pointerdown', (e) => {
         toLocal(e);

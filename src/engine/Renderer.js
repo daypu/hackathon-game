@@ -4,8 +4,15 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    // 逻辑（游戏坐标）尺寸，保持 960×540，所有绘制代码沿用此坐标系
     this.w = canvas.width;
     this.h = canvas.height;
+    // 高分屏适配：把画布物理分辨率提升到 逻辑尺寸 × DPR，再用 setTransform
+    // 缩回逻辑坐标。高清底图与文字在 Retina 屏上更锐利，绘制代码无需改动。
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(this.w * this.dpr);
+    canvas.height = Math.round(this.h * this.dpr);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
   }
 

@@ -16,47 +16,16 @@ class Bajie extends Player {
     }
 
     createVisual() {
-        // 粉紫圆形（主体）
-        this.visual = this.scene.add.circle(
-            this.x, this.y, this.size / 2, this.color
-        );
+        // 像素图替代粉紫圆（保持 hitbox 尺寸）
+        this.visual = this.scene.add.image(this.x, this.y, 'bajie');
+        this.visual.setDisplaySize(this.size, this.size);
         this.scene.physics.add.existing(this.visual);
-        this.visual.body.setCircle(this.size / 2);
+        this.visual.body.setSize(this.size * 0.75, this.size * 0.85);  // hitbox 略小，体验宽容
         this.visual.body.setCollideWorldBounds(true);
-
-        // 装饰：双眼
-        const leftEye = this.scene.add.circle(this.x - 6, this.y - 6, 3, 0xFFFFFF);
-        const rightEye = this.scene.add.circle(this.x + 6, this.y - 6, 3, 0xFFFFFF);
-        const leftPupil = this.scene.add.circle(this.x - 6, this.y - 6, 1.5, 0x000000);
-        const rightPupil = this.scene.add.circle(this.x + 6, this.y - 6, 1.5, 0x000000);
-        // 装饰：耳朵（两个小三角）
-        const ears = this.scene.add.graphics();
-        this.decorations.push(leftEye, rightEye, leftPupil, rightPupil, ears);
-        this.ears = ears;
     }
 
     updateDecorations() {
-        const [le, re, lp, rp] = this.decorations;
-        const vx = this.visual.x, vy = this.visual.y;
-        le.setPosition(vx - 6, vy - 6);
-        re.setPosition(vx + 6, vy - 6);
-        lp.setPosition(vx - 6, vy - 6);
-        rp.setPosition(vx + 6, vy - 6);
-        // 耳朵
-        this.ears.clear();
-        this.ears.fillStyle(this.color, 1);
-        // 左耳
-        this.ears.fillTriangle(
-            vx - 16, vy - 14,
-            vx - 8, vy - 22,
-            vx - 6, vy - 12
-        );
-        // 右耳
-        this.ears.fillTriangle(
-            vx + 6, vy - 12,
-            vx + 8, vy - 22,
-            vx + 16, vy - 14
-        );
+        // 无光环，纯像素图
     }
 
     canPass(obstacle) {
@@ -73,12 +42,11 @@ class Bajie extends Player {
 
         // 进入无敌
         this.isInvincible = true;
-        // 视觉反馈：变金色 + 微微变大
-        const originalColor = this.color;
-        this.visual.fillColor = 0xFFD700;
+        // 视觉反馈：贴图染金色 tint + 微微变大
+        this.visual.setTint(0xFFD700);
         this.scene.tweens.add({
             targets: this.visual,
-            scale: 1.2,
+            scale: this.visual.scale * 1.2,
             duration: 200,
             yoyo: true,
             repeat: Math.floor(GAME_CONFIG.BAJIE_SKILL_DURATION / 400) - 1,
@@ -88,8 +56,8 @@ class Bajie extends Player {
         this.scene.time.delayedCall(GAME_CONFIG.BAJIE_SKILL_DURATION, () => {
             if (!this.isAlive) return;
             this.isInvincible = false;
-            this.visual.fillColor = originalColor;
-            this.visual.setScale(1);
+            this.visual.clearTint();
+            this.visual.setDisplaySize(this.size, this.size);
         });
 
         return true;

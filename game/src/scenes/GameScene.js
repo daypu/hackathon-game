@@ -44,20 +44,18 @@ class GameScene extends Phaser.Scene {
     // ===== 创建系列 =====
 
     drawMountains() {
-        const g = this.add.graphics();
-        g.fillStyle(0x4a1f0a, 1);
-        const baseY = GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_HEIGHT;
-        const peaks = [
-            { x: 100, h: 200 }, { x: 280, h: 280 }, { x: 450, h: 220 },
-            { x: 640, h: 300 }, { x: 820, h: 240 },
-        ];
-        peaks.forEach(p => {
-            g.fillTriangle(
-                p.x - 120, baseY,
-                p.x, baseY - p.h,
-                p.x + 120, baseY
-            );
-        });
+        // 用火焰山像素背景图替代代码生成的山头剪影
+        // 图片原始 1672×941，铺满 960×540 画布
+        const bg = this.add.image(GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT / 2, 'huoyanshan');
+        bg.setDisplaySize(GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT);
+        bg.setDepth(-10);  // 压到最底层
+        // 暗化覆盖层：降低背景对比度，让角色和障碍更突出
+        const dim = this.add.rectangle(
+            GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT / 2,
+            GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT,
+            0x000000, 0.25
+        );
+        dim.setDepth(-9);
     }
 
     createGround() {

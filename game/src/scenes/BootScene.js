@@ -8,20 +8,22 @@ class BootScene extends Phaser.Scene {
     }
 
     preload() {
-        // CP1 阶段所有图形都用 Phaser Graphics 在 GameScene 直接画，无需 preload
-        // 后续接入像素素材时，这里会加 this.load.image(...)
-    }
+        // 加载像素素材（来自 hackathon-game 项目）
+        this.load.image('wukong', 'assets/images/wukong.png');
+        this.load.image('bajie', 'assets/images/bajie.png');
+        this.load.image('huoyanshan', 'assets/images/huoyanshan.png');
 
-    create() {
-        // 显示一行加载提示，然后立刻跳转
-        const text = this.add.text(
+        // 加载提示
+        const loadingText = this.add.text(
             GAME_CONFIG.WIDTH / 2,
             GAME_CONFIG.HEIGHT / 2,
             '万象迷途 加载中...',
             { fontSize: '24px', color: '#FFD700' }
-        );
-        text.setOrigin(0.5);
+        ).setOrigin(0.5);
+        // 加载完成会自动跳到 create
+    }
 
+    create() {
         // 200ms 后跳到游戏场景（短暂停留让玩家看到 logo）
         this.time.delayedCall(200, () => {
             this.scene.start('GameScene');

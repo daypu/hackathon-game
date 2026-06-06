@@ -102,19 +102,27 @@ class BossScene extends Phaser.Scene {
     }
 
     drawBackdrop() {
-        const g = this.add.graphics();
-        g.fillStyle(0x2a0808, 1);
+        // 火焰山像素背景图
+        const bg = this.add.image(GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT / 2, 'huoyanshan');
+        bg.setDisplaySize(GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT);
+        bg.setDepth(-10);
+        // Boss 战暗化覆盖层（比跑酷更暗，营造决战氛围）
+        const dim = this.add.rectangle(
+            GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT / 2,
+            GAME_CONFIG.WIDTH, GAME_CONFIG.HEIGHT,
+            0x4a0808, 0.4
+        );
+        dim.setDepth(-9);
+
+        // 地面横条（保留：让玩家有"地"的感觉）
         const baseY = GAME_CONFIG.HEIGHT - 60;
-        for (let x = 0; x < GAME_CONFIG.WIDTH; x += 140) {
-            const h = 180 + Phaser.Math.Between(-30, 80);
-            g.fillTriangle(x - 80, baseY, x, baseY - h, x + 80, baseY);
-        }
-        g.fillStyle(0x6B2E10, 1);
+        const g = this.add.graphics().setDepth(-5);
+        g.fillStyle(0x6B2E10, 0.85);
         g.fillRect(0, baseY, GAME_CONFIG.WIDTH, 60);
         g.fillStyle(0xA04020, 1);
         g.fillRect(0, baseY, GAME_CONFIG.WIDTH, 4);
 
-        // 飘动的火星粒子
+        // 飘动的火星粒子（保留：动态氛围）
         for (let i = 0; i < 12; i++) {
             const ember = this.add.circle(
                 Phaser.Math.Between(0, GAME_CONFIG.WIDTH),

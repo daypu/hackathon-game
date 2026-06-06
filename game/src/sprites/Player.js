@@ -68,7 +68,12 @@ class Player {
      */
     die() {
         this.isAlive = false;
-        this.visual.fillColor = 0x666666;
+        // 像素图用 tint 染灰；如果是 Rectangle/Circle（保留兼容）用 fillColor
+        if (this.visual.setTint) {
+            this.visual.setTint(0x666666);
+        } else {
+            this.visual.fillColor = 0x666666;
+        }
         const body = this.visual.body;
         if (body) body.setVelocity(0, 0);
     }

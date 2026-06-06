@@ -42,45 +42,31 @@ class BossPlayer {
 
     drawWukong() {
         const size = GAME_CONFIG.PLAYER_SIZE;
-        // 橙色方块主体
-        const body = this.scene.add.rectangle(this.x, this.y, size, size, GAME_CONFIG.COLOR_WUKONG);
+        // 像素图主体
+        const body = this.scene.add.image(this.x, this.y, 'wukong');
+        body.setDisplaySize(size, size);
         body.setDepth(100);
-        // 眼睛
-        const eye = this.scene.add.circle(this.x + 8, this.y - 4, 3, 0xFFFFFF).setDepth(101);
-        const pupil = this.scene.add.circle(this.x + 8, this.y - 4, 1.5, 0x000000).setDepth(102);
-        // 金箍
-        const crown = this.scene.add.graphics().setDepth(101);
-        crown.lineStyle(2, 0xFFD700, 1);
-        crown.strokeRect(this.x - size/2, this.y - size/2 - 2, size, 4);
         // 头顶 label
         const label = this.scene.add.text(this.x, this.y - size/2 - 18, '悟空', {
             fontSize: '14px', color: '#FF6600', fontStyle: 'bold',
             stroke: '#000000', strokeThickness: 3
         }).setOrigin(0.5).setDepth(103);
-        this.decorations.push(body, eye, pupil, crown, label);
+        this.decorations.push(body, label);
         this.body = body;
     }
 
     drawBajie() {
         const size = GAME_CONFIG.PLAYER_BAJIE_SIZE;
-        // 粉紫圆形主体
-        const body = this.scene.add.circle(this.x, this.y, size / 2, GAME_CONFIG.COLOR_BAJIE).setDepth(100);
-        // 双眼
-        const le = this.scene.add.circle(this.x - 6, this.y - 6, 3, 0xFFFFFF).setDepth(101);
-        const re = this.scene.add.circle(this.x + 6, this.y - 6, 3, 0xFFFFFF).setDepth(101);
-        const lp = this.scene.add.circle(this.x - 6, this.y - 6, 1.5, 0x000000).setDepth(102);
-        const rp = this.scene.add.circle(this.x + 6, this.y - 6, 1.5, 0x000000).setDepth(102);
-        // 耳朵
-        const ears = this.scene.add.graphics().setDepth(101);
-        ears.fillStyle(GAME_CONFIG.COLOR_BAJIE, 1);
-        ears.fillTriangle(this.x - 16, this.y - 14, this.x - 8, this.y - 22, this.x - 6, this.y - 12);
-        ears.fillTriangle(this.x + 6, this.y - 12, this.x + 8, this.y - 22, this.x + 16, this.y - 14);
+        // 像素图主体
+        const body = this.scene.add.image(this.x, this.y, 'bajie');
+        body.setDisplaySize(size, size);
+        body.setDepth(100);
         // 头顶 label
         const label = this.scene.add.text(this.x, this.y - size/2 - 18, '八戒', {
             fontSize: '14px', color: '#FF69B4', fontStyle: 'bold',
             stroke: '#000000', strokeThickness: 3
         }).setOrigin(0.5).setDepth(103);
-        this.decorations.push(body, le, re, lp, rp, ears, label);
+        this.decorations.push(body, label);
         this.body = body;
     }
 

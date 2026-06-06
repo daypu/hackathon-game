@@ -210,9 +210,46 @@ work/
 
 **实际耗时**：编码约 50 分钟
 
-### 阶段8：像素素材升级 [optional]
-**目标**：如果时间充足，替换为真实像素风
-**条件**：前面阶段提前完成
+### 阶段8.5：CP5.5 体验打磨（UX/可读性/可点击）[complete] ✅
+**触发**：kafka 试玩 CP5 后批量反馈 3 批 7 个问题
+**输出**：
+- [x] **可点击切角色**：跑酷+Boss战 两个场景的角色卡片均加 `setInteractive` + `pointerdown`（带 `event.stopPropagation()` 防误触跳跃/画弧）✅
+- [x] **失败文案**：ResultScene 标题 "取经失败" → "闯关失败" ✅
+- [x] **画面模糊修复**（双根因）：
+  - index.html 删 `image-rendering: pixelated` 两行 ✅
+  - main.js 加 `resolution: window.devicePixelRatio` + `render: {antialias: true, pixelArt: false, roundPixels: false}` ✅
+- [x] **卡片文案**："免火墙/免巨石" → "防火墙/防巨石"（"免"小字号下被看成"兔"）✅
+- [x] **结算页布局**：按钮 cy+150 → cy+210（多 60px 间距），背景板 420 → 500 高 ✅
+- [x] **操作提示字体**：GameScene 顶部 11px 灰 → 16px 白粗体；BossScene 底部 12px 灰 → 15px 白粗体 ✅
+**实际耗时**：约 25 分钟
+**沉淀**：findings.md 加 CP5.5 章节（Retina 模糊三连 / Phaser Interactive 误触陷阱 / 小字号灰色 = 一定看不清 / 结算页留白经验）
+
+### 阶段9：像素素材升级 [complete] ✅
+**触发**：kafka 决定把 hackathon-game 项目的像素素材搬到本项目（背景 + 角色）
+**输出**：
+- [x] 复制 3 张 PNG 到 `game/assets/images/`（wukong.png 1.1M / bajie.png 1.4M / huoyanshan.png 3.1M）✅
+- [x] `BootScene.preload()` 加载 3 张 PNG ✅
+- [x] `Wukong.js` createVisual 改 image，hitbox = size * 0.7 × 0.85（略宽容）+ 橙色光环标识 ✅
+- [x] `Bajie.js` createVisual 改 image，hitbox = size * 0.75 × 0.85 + 粉色光环标识 ✅
+- [x] `Bajie.useSkill` 的 `fillColor=金` 改 `setTint`，恢复用 `clearTint` ✅
+- [x] `Player.die()` 兼容 image（setTint）和 rectangle/circle（fillColor）✅
+- [x] `GameScene.drawMountains` 替换为火焰山.png 背景 + 25% 暗化层（不挡角色）✅
+- [x] `BossScene.drawBackdrop` 替换为火焰山.png 背景 + 40% 暗化层（决战氛围）✅
+- [x] `BossPlayer.drawWukong/drawBajie` 改 image，保留头顶 label + 光环 ✅
+**决策**：保持像素 60/65 不变；跑酷+Boss战都用火焰山背景（kafka 拍板"都换"）
+**实际耗时**：约 25 分钟
+
+### 阶段9.5：像素图白底清除 + 删除光环 [complete] ✅
+**触发**：kafka 反馈"这个png是有白底的，我要把白底去掉。然后那个光圈也去掉吧，没有用。"
+**实现**：
+- [x] 备份原图：wukong.bak.png / bajie.bak.png ✅
+- [x] 写 `/tmp/remove_white_bg.py`：用 PIL flood-fill 从四个边角向内蔓延，alpha 设为 0（只擦连通到边的白色，不误伤角色身上眼睛/装饰）✅
+- [x] 处理：wukong.png 清除 68.6% 像素 / bajie.png 清除 70.4% 像素 ✅
+- [x] `Wukong.js` 删 aura graphics + updateDecorations 改空函数 ✅
+- [x] `Bajie.js` 删 aura graphics + updateDecorations 改空函数 ✅
+- [x] `BossPlayer.js` drawWukong/drawBajie 删 aura graphics（保留头顶 label）✅
+**关键技术**：flood-fill BFS + RGB 阈值 235（保守，避免误伤）
+**实际耗时**：约 15 分钟
 
 ## 核心决策记录
 1. **交互模式**：✅ 统一跑酷 + 角色切换（平衡创新与可行性）
@@ -258,3 +295,8 @@ work/
 | 进 BossScene 一秒就显示"时间不够"（time.now 坑踩第 2 次）| 1 | `this.time.now` 在 scene.create() 不是 0 起点，跑酷玩了 30s 已经 30000+ms。startTime 改在第一次 update(time) 里赋值 time，确保与 update 的 time 完全同步。getTimeLeft() 在初始化期间返回满血时间避免假阳性 |
 | 跑酷里技能形同虚设（kafka 反馈）| 设计决策 | kafka 自己想出方案：跑酷只跑酷，技能改到 Boss 战。悟空清屏、八戒护盾。我先推了"画弧统一"方案 kafka 不感冒，他自己提的方案更优 — 把"技能没用"和"Boss 太脆"两个问题一锅炖了 |
 | 用户提"用过技能才能过火墙"方案（CD 期必死）| 设计拒绝 | 必须拒绝并解释清楚：CD=10s，火墙每 ~3s 出一个 → CD 期必死。绕开切换玩法 = 自废武功。教训：用户提方案有硬伤要直说，不要硬实现 |
+| Retina 屏画面全糊 / 字体马赛克化（CP5 试玩 kafka 反馈）| 1 | 双根因：(1) index.html `image-rendering: pixelated` 是给像素风用的，本项目非像素风，反而让 FIT 缩放后字体糊；(2) Phaser 默认 1:1 渲染，DPR=2 的 Retina 屏物理像素只有逻辑像素一半。删 pixelated + main.js 加 `resolution: window.devicePixelRatio` + `render: {pixelArt: false}` 三连修 |
+| 卡片"免"字被看成"兔"字（kafka 反馈）| 1 | 字号 11px + 画面模糊 → "免疫"的"免"被错认。直接换"防"更直白通俗。教训：UI 文字 14px 起步，优先选简单单字 |
+| 卡片可点击切角色（kafka 反馈：只能键盘切）| 1 | `setInteractive({useHandCursor:true})` + `pointerdown` 回调。**关键**：回调里 `event.stopPropagation()` 阻断冒泡到全局 pointerdown（否则点 UI 会同时跳跃/触发画弧手势）|
+| 结算页"总分 xxxx"框和按钮重叠（kafka 反馈）| 1 | 旧 cy+72 框底（cy+97）→ cy+125 按钮顶，只剩 28px。按钮挪 cy+150→cy+210，背景板高 420→500，间距给到 88px |
+| 像素图带白底（kafka 反馈：要去白底 + 去光圈）| 1 | PIL flood-fill 从边角向内蔓延，连通的白色像素 alpha=0。阈值 235 + 4 邻居 BFS。角色身上的眼睛/装饰因为不与边角连通而保留。Wukong/Bajie/BossPlayer 三个文件删 aura graphics 即可 |

@@ -16,33 +16,16 @@ class Wukong extends Player {
     }
 
     createVisual() {
-        // 橙色方块（主体）
-        this.visual = this.scene.add.rectangle(
-            this.x, this.y, this.size, this.size, this.color
-        );
+        // 像素图替代橙方块（保持 hitbox 尺寸 = this.size）
+        this.visual = this.scene.add.image(this.x, this.y, 'wukong');
+        this.visual.setDisplaySize(this.size, this.size);
         this.scene.physics.add.existing(this.visual);
+        this.visual.body.setSize(this.size * 0.7, this.size * 0.85);  // hitbox 略小于贴图，体验更宽容
         this.visual.body.setCollideWorldBounds(true);
-
-        // 装饰：眼睛
-        const eye = this.scene.add.circle(this.x + 8, this.y - 4, 3, 0xFFFFFF);
-        const pupil = this.scene.add.circle(this.x + 8, this.y - 4, 1.5, 0x000000);
-        // 装饰：金箍
-        const crown = this.scene.add.graphics();
-        this.decorations.push(eye, pupil, crown);
-        this.crown = crown;
     }
 
     updateDecorations() {
-        const [eye, pupil] = this.decorations;
-        eye.setPosition(this.visual.x + 8, this.visual.y - 4);
-        pupil.setPosition(this.visual.x + 8, this.visual.y - 4);
-        this.crown.clear();
-        this.crown.lineStyle(2, 0xFFD700, 1);
-        this.crown.strokeRect(
-            this.visual.x - this.size/2,
-            this.visual.y - this.size/2 - 2,
-            this.size, 4
-        );
+        // 无光环，纯像素图
     }
 
     canPass(obstacle) {

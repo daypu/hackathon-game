@@ -132,3 +132,145 @@
 - kafka 方案省时间（50 min）+ 解决问题更多（5 个一锅炖：技能没用 / Boss 太脆 / 传统打法 / 跑酷克制弱 / 切换价值小）
 - **设计原则**：用户是产品经理，开发者补技术细节。**先让用户充分表达，再补方案**
 
+---
+
+## CP5.5 阶段技术 / UX 发现（会话 7）
+
+### Retina + Phaser 模糊三连
+Mac Retina（devicePixelRatio=2）+ Phaser FIT 缩放下，**默认设置一定是糊的**。三个修复缺一不可：
+1. `phaserConfig.resolution = window.devicePixelRatio || 1` —— 渲染分辨率跟物理像素对齐
+2. `phaserConfig.render = { antialias: true, pixelArt: false, roundPixels: false }` —— 明确告诉 Phaser 用线性过滤、不强行整数像素
+3. **删 `image-rendering: pixelated`** —— 这是给像素风的，不是的话用了就糊成马赛克
+- **教训**：Phaser 模板复制时不要无脑保留 `image-rendering: pixelated`，先确认游戏风格
+
+### Phaser InteractiveObject + 全局 pointerdown 误触陷阱
+项目里 GameScene 注册过 `this.input.on('pointerdown', () => jump())`，BossScene 注册过手势识别开始监听 `pointerdown`。后来给卡片加 `setInteractive` + `pointerdown` 切角色，**结果点卡片角色会同时跳起来 / 进入画弧手势**。
+- **根因**：Phaser 的 `setInteractive` 触发的事件**默认会冒泡**到 scene 级的全局 `input.on('pointerdown')`
+- **修法**：在 InteractiveObject 的回调里 `event.stopPropagation()`：
+  ```js
+  this.wukongCard.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.switchTo('wukong');
+  });
+  ```
+- **教训**：UI 元素 + 全局输入共存时，UI 回调一律先 stopPropagation
+
+### 小字号 + 灰色 = 一定看不清
+- 11px + #666 灰色文字，**100% 会被吐槽**
+- 字号不够 → "免" 被看成 "兔"、"分" 被看成 "份"
+- **经验值**：UI 文字字号下限 14px，颜色对比度 > 4:1（白底深字 or 黑底白字）
+- **层级**：主信息 22-28px / 提示信息 14-16px / 装饰小注 11-12px（最小别再低于 11）
+
+### 结算页布局留白经验
+- 总分框（h=50）的**框底** 距下方按钮的**顶边** 应 ≥ 60-80px 才算清爽
+- 之前 cy+72（框中心）+ 25（半高）= cy+97（框底），按钮在 cy+150 - 25 = cy+125（按钮顶）→ **仅 28px**，肉眼上完全贴一起
+- 修改后：按钮挪到 cy+210，留白 88px
+- **经验值**：信息块与交互按钮间至少留 1 个按钮高（这里 50px）的间距
+
+
+---
+
+## CP6 阶段技术发现（会话 8 - 像素素材接入）
+
+### Phaser Image vs Rectangle/Circle 的 API 差异
+| 操作 | Rectangle/Circle | Image |
+|---|---|---|
+| 改填充色 | `obj.fillColor = 0xFFD700` | `obj.setTint(0xFFD700)` |
+| 恢复原色 | `obj.fillColor = origColor` | `obj.clearTint()` |
+| 设置尺寸 | 构造时传 width/height | `obj.setDisplaySize(w, h)` |
+| body 大小 | 自动跟着 visual | 必须 `body.setSize(w, h)` |
+| scale 初始值 | 1 | setDisplaySize 后 ≠ 1 |
+
+**致命坑**：image 没有 fillColor 属性，赋值不报错但完全无效（**静默失败**）；scale 不是 1，后续 tween 缩放写 `scale: 1.2` 会**变小**（因为原 scale 是 0.048）。修：用 `scale: this.visual.scale * 1.2` 相对值
+
+### 像素图替代代码生成形状的工程清单
+做的不仅是"换贴图"。要同时改：
+1. **创建**：`add.image` 替代 `add.rectangle/circle`
+2. **尺寸**：`setDisplaySize` 而非构造参数
+3. **物理 body**：手动 `body.setSize`（hitbox 略小于贴图，留出 padding）
+4. **改色**：所有 `fillColor =` 替换为 `setTint`，恢复用 `clearTint`
+5. **死亡变灰**：基类 `die()` 加 `if (setTint)` 双兼容（防止其他场景也用同一基类但仍是 Rectangle）
+6. **装饰简化**：像素图自带细节（眼睛/装饰），去掉代码画的眼睛/金箍/耳朵
+7. **加标识**：换贴图后多角色色调可能相近，加"颜色光环"（GameScene/BossScene 都加）让玩家秒识当前角色
+
+### 背景图接入的 3 行核心代码
+```js
+const bg = this.add.image(WIDTH/2, HEIGHT/2, 'huoyanshan');
+bg.setDisplaySize(WIDTH, HEIGHT);
+bg.setDepth(-10);
+// 再加一层暗化（让背景成氛围）
+this.add.rectangle(WIDTH/2, HEIGHT/2, WIDTH, HEIGHT, 0x000000, 0.25).setDepth(-9);
+```
+**经验值**：背景图 alpha 1.0 + 暗化层 alpha 0.25（跑酷）/0.4（Boss 战）= 视觉舒适
+**避免**：直接用原图（角色看不清）/ 不加 setDepth（被地面盖住）
+
+### 资源管理：复制 vs 软链接
+- 跨项目共用素材：**复制更安全**，独立可移植（本项目 game/assets/images/ 自包含）
+- 软链接：节省空间但跨项目依赖，迁移时容易丢
+- 黑客松项目 6MB 不算大，复制是最优解
+
+---
+
+## CP6.5 阶段技术发现（会话 9 - 白底清除）
+
+### PIL flood-fill 去除白底（保护角色内部浅色）
+**问题**：素材白底需要去掉，但简单的"所有白色变透明"会误伤角色身上的眼睛、装饰、衣领等浅色元素
+
+**解决：flood-fill 算法**
+```python
+from PIL import Image
+from collections import deque
+
+img = Image.open("wukong.png").convert("RGBA")
+w, h = img.size
+pixels = img.load()
+visited = [[False] * h for _ in range(w)]
+queue = deque()
+
+THRESHOLD = 235  # RGB > 235 算白色
+def is_white(x, y):
+    r, g, b, a = pixels[x, y]
+    return r > THRESHOLD and g > THRESHOLD and b > THRESHOLD and a > 0
+
+# 1. 把四条边上所有白色像素加入队列（起点）
+for x in range(w):
+    for y in [0, h-1]:
+        if is_white(x, y): queue.append((x, y)); visited[x][y] = True
+for y in range(h):
+    for x in [0, w-1]:
+        if is_white(x, y): queue.append((x, y)); visited[x][y] = True
+
+# 2. BFS 蔓延，标记所有连通到边的白色像素为透明
+while queue:
+    x, y = queue.popleft()
+    pixels[x, y] = (255, 255, 255, 0)
+    for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
+        nx, ny = x+dx, y+dy
+        if 0<=nx<w and 0<=ny<h and not visited[nx][ny] and is_white(nx, ny):
+            visited[nx][ny] = True
+            queue.append((nx, ny))
+
+img.save("wukong.png")
+```
+
+**关键洞察**：
+- 角色身上的眼睛/牙齿/衣领等浅色被"非白边缘"包围 → 不与四个边角连通 → flood-fill 不会到达 → 完整保留 ✅
+- 简单的 `if rgb > 阈值: alpha=0` 会无差别擦除所有浅色 → ❌
+- 阈值 235 是个保守选择，避免把"接近白"的脏色误判（如果角色边缘有抗锯齿的浅灰色，可适当降低）
+
+**性能**：1254×1254 图，处理时间约 1.5s（够用了）
+
+### 必先备份再处理图像
+```bash
+cp wukong.png wukong.bak.png && python3 process.py
+```
+- 备份成本：< 1 秒
+- 处理失误回滚成本：1 秒（cp 反向）
+- 不备份的回滚成本：可能要重新下载原文件、重新处理一遍
+- 黑客松节奏下，**备份是 ROI 最高的预防措施**
+
+### 不要急着加"防御性额外特征"
+- CP6 给两个角色加了"颜色光环"，理由："担心两张像素图色调相近，玩家分不清"
+- kafka CP6.5 反馈："光圈也去掉吧，没有用"
+- 教训：**自己的"防御性设计"，用户不一定需要**。先给最简版让用户用，再根据真实反馈加特征。**少即是多**
+

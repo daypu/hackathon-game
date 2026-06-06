@@ -405,3 +405,188 @@ work/
 - 小妖怪冲刺速度 180 px/s 是否合适
 - 玩家位置 (110, HEIGHT-110) 是否合适（左下角）
 
+---
+
+## 会话 7 - 2026-06-06（CP5.5 体验打磨 —— UX/可读性/可点击）
+
+### kafka 反馈（三批 + 一次追问，共 7 个点）
+
+**批 1（交互 + 文案 + 视觉）**
+1. 跑酷和 Boss 战切角色，**点角色卡片**也要能切（之前只能键盘 1/2）
+2. 失败画面"取经失败"改成"**闯关失败**"（kafka 原话："简单地叫取经失败吧"我先误解了，二次确认拿到"换成闯关失败"）
+3. 画面**很模糊**，字体也糊
+
+**批 2（卡片文案 + 结算页布局）**
+4. 卡片上"免火墙/免巨石"被 kafka 看成"**兔**火墙/兔巨石"了 → 改成"防"
+5. 结算页"总分 xxxx"框和"再来一次/截图分享"按钮**重叠**
+
+**批 3（提示字体）**
+6. 顶部那行"空格=跳跃 | 1=悟空 2=八戒..."**字太小太灰**，要大字白字
+
+### 修复实现
+
+#### 修 1：卡片点击切角色（最高 ROI 改动）
+两个场景的卡片都加 `setInteractive({useHandCursor:true})` + `pointerdown` 回调：
+```js
+this.wukongCard.on('pointerdown', (pointer, lx, ly, event) => {
+    event.stopPropagation();   // 阻止冒泡到全局 pointerdown
+    this.switchTo('wukong');
+});
+```
+**关键细节**：必须 `event.stopPropagation()` —— 否则 GameScene 全局 `pointerdown` 会让玩家**同时跳跃**，BossScene 会**同时触发画弧手势**
+
+#### 修 2：文案
+- `ResultScene.renderLose` 标题 "取经失败" → **"闯关失败"**
+
+#### 修 3：画面模糊（双根因）
+**根因 A**：`index.html` 里 `canvas { image-rendering: pixelated }` —— 这是给像素风游戏用的，本项目不是像素风，反而让 Retina + FIT 缩放后字体糊成马赛克。**删掉两行**
+**根因 B**：Phaser 默认按 1:1 渲染，Retina 屏（DPR=2）下物理像素只有逻辑像素的一半。`main.js` 加：
+```js
+resolution: window.devicePixelRatio || 1,
+render: { antialias: true, pixelArt: false, roundPixels: false },
+```
+
+#### 修 4：卡片文案"免" → "防"
+"免疫"在小字号下被看成"兔"。"防"更直白通俗。GameScene 两张卡片均改。
+
+#### 修 5：结算页布局
+- 按钮 y 从 `cy+150` → **`cy+210`**（多 60px 间距）
+- 背景板从 `420` 高 → **`500` 高** 并下移 `cy+20`（防按钮溢出板外）
+- 总分框底 cy+97 → 按钮顶 cy+185 → **88px 留白**，非常清爽
+
+#### 修 6：操作提示字体
+| 位置 | 字号 | 颜色 |
+|---|---|---|
+| GameScene 顶部 | 11px → **16px** | #666 灰 → **#FFF 白粗体** |
+| BossScene 底部 | 12px → **15px** | #888 灰 → **#FFF 白粗体** |
+
+### 修改的文件（本会话）
+- `game/index.html`：删 `image-rendering: pixelated` 两行
+- `game/src/main.js`：加 `resolution` + `render` 配置
+- `game/src/scenes/GameScene.js`：卡片可点击 + 文案"免"→"防"+ 顶部提示加大变白
+- `game/src/scenes/BossScene.js`：卡片可点击（带 stopPropagation 防误触画弧）+ 底部提示加大变白
+- `game/src/scenes/ResultScene.js`：标题"取经失败"→"闯关失败"+ 按钮下移 60px + 背景板加高
+
+### 当前状态
+- ✅ CP1 / CP2 / CP3 / CP3.5 / CP4 / CP4.5 / CP5 全部 kafka 验收
+- ⏳ CP5.5 体验打磨完成，等 kafka 强刷试一把
+- 等 kafka 反馈：模糊修没修干净？卡片点击手感如何？布局/字体满意？
+
+### 关键经验沉淀（会话 7）
+1. **Retina + Phaser 模糊三连**：`resolution: devicePixelRatio` + 删 `image-rendering: pixelated` + `pixelArt: false`，这三个不是像素风游戏一定要全配齐
+2. **InteractiveObject + 全局 pointerdown 共存时必须 stopPropagation**：否则点 UI 会顺带触发"跳跃/画弧"等全局动作
+3. **小字号 + 模糊画面下，"免"会被看成"兔"**：UI 文字字号至少给 14+，并优先选直白单字（"防/挡"优于"免疫"）
+4. **kafka 试玩反馈往往 1 句话踩 1-2 个体验坑**：要拆开逐条修，每条都给"根因 + 修法 + 文件"——便于日后回看
+5. **Phaser 文字字号选择**：主信息 22-28px / 提示信息 14-16px / 装饰小注 11-12px。**避免**用 11px 又用 #666 灰色 —— 一定会被吐槽看不清
+
+
+---
+
+## 会话 8 - 2026-06-06（CP6 像素素材升级 —— 接入 hackathon-game 资源）
+
+### kafka 决策路径
+1. kafka 提："我想把我这个游戏接在 hackathon-game 这个项目上，比如一个传送口就传到我这个游戏"
+2. 我先回答两个问题，**不动手**（按 CLAUDE.md 决策确认原则）：
+   - 项目合并 3 条路（浏览器跳转 / iframe / 移植融合），推荐方案 A
+   - 像素素材 3 种用法（背景 / 角色 / 全套）
+3. kafka 决策："1.先换素材 2.项目合并先不管"
+4. 我又提 3 个细节问题（复制还是软链 / 是否调整角色尺寸 / 跑酷远景是否也换火焰山）
+5. kafka 全部明确："1.复制 2.保持现在像素 3.都换火焰山"
+
+### 实现（10 分钟内完成）
+**复制资源**：
+- `hackathon-game/arts/孙悟空.png` → `game/assets/images/wukong.png` (1.1M, 1254×1254)
+- `hackathon-game/arts/猪八戒.png` → `game/assets/images/bajie.png` (1.4M, 1254×1254)
+- `hackathon-game/arts/火焰山.png` → `game/assets/images/huoyanshan.png` (3.1M, 1672×941)
+
+**代码改动 7 个文件**：
+| 文件 | 改动 |
+|---|---|
+| `BootScene.js` | `preload()` 加载 3 张 PNG，loadingText 移到 preload |
+| `Wukong.js` | `createVisual()`：rectangle → image；hitbox 0.7×0.85 SIZE；装饰：单橙色光环替代 眼睛+金箍 |
+| `Bajie.js` | `createVisual()`：circle → image；hitbox 0.75×0.85 SIZE；装饰：单粉色光环替代 双眼+耳朵；`useSkill()` 染金从 `fillColor=` 改 `setTint`，恢复用 `clearTint`+`setDisplaySize` |
+| `Player.js` | `die()` 染灰兼容 image（setTint）和 rect/circle（fillColor）双形态 |
+| `GameScene.js` | `drawMountains()`：5 个三角形山头 → 火焰山 image 铺满 + 25% 黑色暗化层 |
+| `BossScene.js` | `drawBackdrop()`：火焰山 image + 40% 红色暗化层（决战氛围更红）+ 保留火星粒子和地面 |
+| `BossPlayer.js` | `drawWukong/drawBajie`：rectangle/circle → image；保留头顶 label + 加单色光环 |
+
+### 关键设计点
+1. **像素图 + 单色光环**：抛弃了"眼睛/金箍/耳朵"的代码生成装饰（像素图自带这些细节），改用单一颜色光环标识"当前角色"。同时弥补两张像素图色调可能太接近、玩家分不清的风险
+2. **hitbox 略小于贴图**：`size * 0.7~0.75 × 0.85` —— 像素图边缘有透明 padding，按贴图原尺寸做 hitbox 会很苛刻。略小让玩家"擦边过"也算过
+3. **背景暗化层**：跑酷 25%、Boss 战 40%。让背景成"氛围"而不是"干扰"，玩家视觉焦点仍在角色和障碍
+4. **决策 die() 兼容**：因为之前 fillColor 是 Rectangle/Circle 的属性，image 没有；现在改成 `if (setTint)` 双兼容，避免运行时报错
+
+### 等 kafka 验收
+强刷浏览器（Cmd+Shift+R）后看：
+- 跑酷开局：背景是火焰山图、悟空是像素图、外面包橙色光环
+- 切八戒：像素图变猪八戒、光环变粉色
+- 进 Boss 战：火焰山背景更红更暗、玩家像素图在左下、铁扇公主在右
+
+### 项目当前文件结构
+```
+work/game/
+├── dev_server.py
+├── index.html
+├── lib/phaser.min.js
+├── assets/
+│   └── images/                              ⭐ 新（5.6MB 像素素材）
+│       ├── wukong.png      (1.1M)
+│       ├── bajie.png       (1.4M)
+│       └── huoyanshan.png  (3.1M)
+└── src/
+    ├── ...（其他不变）
+    └── scenes/BootScene.js  (改 preload)
+```
+
+### 关键经验沉淀（会话 8）
+1. **kafka 决策路径示范**：我先问，他再答，我又问，他再答 —— 中间 0 重写。比"猜+做+返工"高效得多
+2. **像素图替换形状的工程要点**：(a) fillColor 不能用 → setTint；(b) hitbox 要手动 setSize；(c) 装饰可以大幅简化（图本身有细节）；(d) 加"标识光环"弥补图色调相近的问题
+3. **背景图覆盖代码图形 = 关键操作**：直接 `setDisplaySize(WIDTH, HEIGHT)` + `setDepth(-10)` 一行搞定。配暗化层 alpha 0.25-0.4 是"氛围"和"干扰"的分界线
+4. **Image 的 scale 不是 1**：setDisplaySize 后 scale = 显示尺寸/原始尺寸（0.048）；后续 tween 缩放要用 `this.visual.scale * 1.2`（相对值），不能写死 1.2
+
+---
+
+## 会话 9 - 2026-06-06（CP6.5 白底清除 + 删光环）
+
+### kafka 两个具体反馈
+> "我想强调的一个事是现在这个png是有白底的，我要把白底去掉，你懂我意思吧，然后那个光圈也去掉吧，没有用。"
+
+### 实现路径（约 15 分钟）
+1. **看图确认问题**：Read wukong.png / bajie.png 两张图，确认大片白色背景需要变透明
+2. **备份原图**：`cp wukong.png wukong.bak.png` + 八戒同理（万一处理失误能秒回滚）
+3. **写 PIL 脚本** `/tmp/remove_white_bg.py`：
+   - flood-fill BFS 从四个边角向内蔓延
+   - 阈值 RGB > 235 算白色
+   - 4 邻居蔓延，连通到边的白色像素 alpha=0
+   - **关键**：角色身上的眼睛/装饰因为不与边角连通而完整保留（这就是为什么用 flood-fill 而不是简单的色域阈值替换）
+4. **处理结果**：wukong 清除 68.6% 像素 / bajie 清除 70.4% 像素 → 干净透明背景
+5. **删光环代码**（3 个文件）：
+   - `Wukong.js`：删 `this.aura = ...` 那两行 + updateDecorations 改空函数
+   - `Bajie.js`：同上
+   - `BossPlayer.js`：drawWukong/drawBajie 删 aura graphics（保留头顶 label）
+
+### 关键技术：flood-fill vs 简单阈值替换
+- 简单阈值（"所有白色都变透明"）会误伤角色身上的眼睛/牙齿/衣领等浅色元素 → ❌
+- flood-fill 从边角开始蔓延 → 只擦"连通到边"的白色 → 角色内部的浅色被完整保留 ✅
+- 这是图像处理里的经典技巧，3 行 BFS 解决
+
+### 修改的文件（本会话）
+- `game/assets/images/wukong.png`（用 PIL 处理过的）
+- `game/assets/images/bajie.png`（用 PIL 处理过的）
+- 备份：`wukong.bak.png` / `bajie.bak.png`
+- `game/src/sprites/Wukong.js`：删 aura graphics
+- `game/src/sprites/Bajie.js`：删 aura graphics
+- `game/src/sprites/BossPlayer.js`：drawWukong/drawBajie 删 aura
+
+### 当前状态
+- ✅ CP1 → CP6 全部 kafka 验收
+- ✅ CP6.5 白底清除 + 删光环 完成
+- ⏳ 等 kafka 强刷浏览器验收
+
+### 关键经验沉淀（会话 9）
+1. **kafka 反馈给具体指令时（不带方案），不需要再问**：直接执行 + 解释做了什么。"白底去掉" + "光圈去掉" 就是非常具体的两个动作
+2. **图像处理用 PIL flood-fill 比简单阈值替换强 10 倍**：保护角色身上的浅色元素不被误伤
+3. **必先备份再处理图像**：cp wukong.png wukong.bak.png —— 处理失误能秒回滚，1 秒成本，无穷收益
+4. **会话 8 加的"光环"被会话 9 删了**：教训 —— 不要急着加"防御性的额外特征"。kafka 看到原素材就明白了，光环只是我自己的过度设计。**少即是多**
+
+---

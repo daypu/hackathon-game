@@ -60,11 +60,11 @@ class Bajie extends Player {
     }
 
     canPass(obstacle) {
-        // 岩石类全部免疫
-        if (obstacle.type === 'rock' || obstacle.type === 'boulder') {
+        // 只免疫巨石（克制系统：必须切八戒穿）
+        if (obstacle.type === 'boulder') {
             return true;
         }
-        // 火焰、飞石都会死
+        // 小妖怪、火墙都会死（小妖怪必须跳，火墙必须切悟空）
         return false;
     }
 

@@ -21,8 +21,8 @@ class ResultScene extends Phaser.Scene {
 
         this.cameras.main.setBackgroundColor(this.data_.win ? 0x1a3010 : 0x301010);
 
-        // 半透明背景板
-        this.add.rectangle(cx, cy, 580, 420, 0x000000, 0.55);
+        // 半透明背景板（加高以容纳按钮，避免按钮和总分框挤一起）
+        this.add.rectangle(cx, cy + 20, 580, 500, 0x000000, 0.55);
 
         if (this.data_.win) {
             this.renderWin(cx, cy);
@@ -30,18 +30,18 @@ class ResultScene extends Phaser.Scene {
             this.renderLose(cx, cy);
         }
 
-        // 重玩按钮
-        const btnRestart = this.add.rectangle(cx - 100, cy + 150, 160, 50, 0xFF6600)
+        // 重玩按钮（下移到 cy+210，与总分框/数据行拉开距离）
+        const btnRestart = this.add.rectangle(cx - 100, cy + 210, 160, 50, 0xFF6600)
             .setInteractive({ useHandCursor: true });
-        this.add.text(cx - 100, cy + 150, '再来一次', {
+        this.add.text(cx - 100, cy + 210, '再来一次', {
             fontSize: '20px', color: '#FFFFFF', fontStyle: 'bold'
         }).setOrigin(0.5);
         btnRestart.on('pointerdown', () => this.scene.start('GameScene'));
 
         // 分享按钮（截图）
-        const btnShare = this.add.rectangle(cx + 100, cy + 150, 160, 50, 0x4488FF)
+        const btnShare = this.add.rectangle(cx + 100, cy + 210, 160, 50, 0x4488FF)
             .setInteractive({ useHandCursor: true });
-        this.add.text(cx + 100, cy + 150, '截图分享', {
+        this.add.text(cx + 100, cy + 210, '截图分享', {
             fontSize: '20px', color: '#FFFFFF', fontStyle: 'bold'
         }).setOrigin(0.5);
         btnShare.on('pointerdown', () => this.takeScreenshot());
@@ -103,7 +103,7 @@ class ResultScene extends Phaser.Scene {
     }
 
     renderLose(cx, cy) {
-        this.add.text(cx, cy - 150, '取经失败', {
+        this.add.text(cx, cy - 150, '闯关失败', {
             fontSize: '40px', color: '#FF4444', fontStyle: 'bold',
             stroke: '#000000', strokeThickness: 4
         }).setOrigin(0.5);

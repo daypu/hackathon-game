@@ -22,8 +22,8 @@
         }
         canvas {
             box-shadow: 0 0 40px rgba(255, 102, 0, 0.3);
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
+            /* 不要 image-rendering: pixelated —— 这不是像素风游戏，
+               用了反而让 Retina 屏 + 缩放后的字体糊成马赛克 */
         }
     </style>
 </head>
@@ -43,6 +43,8 @@
     <script src="src/sprites/Obstacle.js"></script>
     <script src="src/sprites/Tieshan.js"></script>
     <script src="src/sprites/Fireball.js"></script>
+    <script src="src/sprites/BossPlayer.js"></script>
+    <script src="src/sprites/BossMonster.js"></script>
     <script src="src/managers/ObstacleManager.js"></script>
     <script src="src/scenes/BootScene.js"></script>
     <script src="src/scenes/GameScene.js"></script>

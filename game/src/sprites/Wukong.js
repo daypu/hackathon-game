@@ -46,22 +46,22 @@ class Wukong extends Player {
     }
 
     canPass(obstacle) {
-        // 火焰类全部免疫
-        if (obstacle.type === 'fire' || obstacle.type === 'fire_wall') {
+        // 只免疫火墙（克制系统：必须切悟空穿）
+        if (obstacle.type === 'fire_wall') {
             return true;
         }
-        // 岩石、飞石、巨石都会死
+        // 小妖怪、巨石都会死（小妖怪必须跳，巨石必须切八戒）
         return false;
     }
 
     useSkill() {
         if (!super.useSkill()) return false;
 
-        // 清除屏幕内所有火焰类障碍
+        // 清除屏幕内所有火墙
         const obstacles = this.scene.obstacleManager.getObstacles();
         let cleared = 0;
         obstacles.forEach(o => {
-            if (o.type === 'fire' || o.type === 'fire_wall') {
+            if (o.type === 'fire_wall') {
                 o.destroy();
                 cleared++;
             }

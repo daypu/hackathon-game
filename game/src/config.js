@@ -34,12 +34,14 @@ const GAME_CONFIG = {
     FIRE_WALL_HEIGHT: 460,        // 火墙高度（顶天，跳不过去，必须切悟空穿）
     BOULDER_RADIUS: 80,           // 巨石半径（贴地超宽，跳不过去，必须切八戒穿）
 
-    // 障碍类型解锁时间（秒）—— 30s 关卡，全部内容 18s 内出齐
-    UNLOCK_ROCK: 0,           // 岩石：开局即有
-    UNLOCK_FIRE: 0,           // 火焰：开局即有
-    UNLOCK_FLY_ROCK: 5,       // 飞石：5 秒解锁
-    UNLOCK_FIRE_WALL: 10,     // 火墙：10 秒解锁
-    UNLOCK_BOULDER: 18,       // 巨石：18 秒解锁
+    // 障碍类型解锁时间（秒）—— 30s 关卡，全部内容 16s 内出齐
+    UNLOCK_MONSTER: 0,        // 小妖怪（地面+空中两种姿态）：开局即有，跳跃躲避，两个角色都不能撞
+    UNLOCK_FIRE_WALL: 8,      // 火墙：8 秒解锁（必须切悟空穿）
+    UNLOCK_BOULDER: 16,       // 巨石：16 秒解锁（必须切八戒穿）
+
+    // 小妖怪：地面 vs 空中比例
+    MONSTER_AIR_RATIO: 0.4,   // 40% 概率生成空中姿态
+    MONSTER_AIR_HEIGHT: 95,   // 空中妖怪离地高度（玩家可跳过）
 
     // 跑酷关卡时长（秒）—— 跑过这个时间，铁扇公主出现
     STAGE_DURATION: 30,
@@ -47,14 +49,30 @@ const GAME_CONFIG = {
     BOSS_APPEAR_AT: 30,       // 30s 时 Boss 入场
 
     // Boss 战参数（铁扇公主）
-    BOSS_HP: 100,             // 血量
-    BOSS_TIME_LIMIT: 20000,   // 倒计时 20 秒
+    BOSS_HP: 180,             // 血量（之前 100 太脆）
+    BOSS_TIME_LIMIT: 25000,   // 倒计时 25 秒（加血同步加时）
     BOSS_BASE_DAMAGE: 5,      // 基础伤害
-    BOSS_FIREBALL_INTERVAL_1: 4000,  // 阶段 1 (HP 100~66) 火球间隔
-    BOSS_FIREBALL_INTERVAL_2: 2500,  // 阶段 2 (HP 66~33)
-    BOSS_FIREBALL_INTERVAL_3: 1500,  // 阶段 3 (HP 33~0) 暴怒
-    BOSS_FIREBALL_SPEED: 380,        // 火球飞行速度
-    BOSS_FIREBALL_HIT_LIMIT: 3,      // 被击中 3 次 = 失败
+    BOSS_FIREBALL_INTERVAL_1: 2200,  // 阶段 1 (HP 120~180) 火球间隔（更密）
+    BOSS_FIREBALL_INTERVAL_2: 1300,  // 阶段 2 (HP 60~120)
+    BOSS_FIREBALL_INTERVAL_3: 700,   // 阶段 3 (HP 0~60) 暴怒
+    BOSS_FIREBALL_SPEED: 460,        // 火球飞行速度（更快）
+    BOSS_FIREBALL_MULTI_PHASE2: 2,   // 阶段 2 一次扔几个
+    BOSS_FIREBALL_MULTI_PHASE3: 3,   // 阶段 3 一次扔几个
+    BOSS_FIREBALL_SPREAD: 22,        // 多发火球的夹角（度）
+    BOSS_FIREBALL_HIT_LIMIT: 4,      // 被击中 4 次 = 失败（容错+1，补偿小妖怪）
+
+    // Boss 战小妖怪
+    BOSS_MONSTER_SPEED: 180,             // 冲向玩家速度（px/s）
+    BOSS_MONSTER_INTERVAL_NORMAL: 1500,  // Boss HP > 60% 时的生成间隔
+    BOSS_MONSTER_INTERVAL_RAGE: 800,     // Boss HP < 60% 暴怒期间隔
+    BOSS_MONSTER_FIRST_DELAY: 2500,      // 首发延迟（让玩家先反应一下）
+
+    // Boss 战技能（比跑酷版 CD 短）
+    BOSS_WUKONG_SKILL_CD: 5000,      // 5s
+    BOSS_BAJIE_SKILL_CD: 8000,       // 8s
+    BOSS_BAJIE_SHIELD_DURATION: 2500,// 八戒护盾持续时间（小妖怪不能靠近）
+    BOSS_BAJIE_SHIELD_RADIUS: 70,    // 护盾半径
+
 
     // 手势识别
     GESTURE_MIN_POINTS: 8,    // 最少采样点数（防作弊）
@@ -79,9 +97,10 @@ const GAME_CONFIG = {
     COLOR_WUKONG: 0xFF6600,       // 悟空：橙色
     COLOR_BAJIE: 0xFF69B4,        // 八戒：粉紫色
     COLOR_OBSTACLE: 0x444444,     // 障碍物：深灰
-    COLOR_FIRE: 0xFF3300,         // 火焰：亮红
-    COLOR_ROCK: 0x666666,         // 岩石：灰
-    COLOR_FLY_ROCK: 0x888888,     // 飞石：浅灰
+    COLOR_MONSTER_BODY: 0x3aa856, // 小妖怪：草绿身体
+    COLOR_MONSTER_BELLY: 0x88dd88,// 小妖怪：浅绿肚皮
+    COLOR_MONSTER_EYE: 0xff4444,  // 小妖怪：红眼睛
+    COLOR_MONSTER_TUSK: 0xfff4d0, // 小妖怪：象牙白獠牙
     COLOR_FIRE_WALL: 0xFF2200,    // 火墙：鲜红
     COLOR_BOULDER: 0x555555,      // 巨石：中灰
     COLOR_SKILL_READY: 0x00FF88,  // 技能就绪：亮绿

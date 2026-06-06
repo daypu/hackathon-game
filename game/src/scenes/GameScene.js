@@ -118,8 +118,8 @@ class GameScene extends Phaser.Scene {
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
         this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
-        this.keyJ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J);
         this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+        // 跑酷阶段不要 J 键技能：技能完全留给 Boss 战
 
         // 鼠标点击：跳跃
         this.input.on('pointerdown', () => {
@@ -186,30 +186,40 @@ class GameScene extends Phaser.Scene {
 
         // 顶部操作提示（让位给卡片）
         this.add.text(
-            GAME_CONFIG.WIDTH / 2, 45,
-            '空格=跳跃 │ 1=悟空 2=八戒 │ J=技能',
-            { fontSize: '11px', color: '#666666' }
+            GAME_CONFIG.WIDTH / 2, 50,
+            '空格=跳跃 │ 1=悟空 2=八戒 │ 火墙切悟空 巨石切八戒 妖怪必跳',
+            { fontSize: '16px', color: '#FFFFFF', fontStyle: 'bold' }
         ).setOrigin(0.5);
     }
 
     createRoleCards() {
         const y = GAME_CONFIG.HEIGHT - 45;  // 贴底（原来 -80）
 
-        // 悟空卡片
-        this.wukongCard = this.add.rectangle(80, y, 110, 40, GAME_CONFIG.COLOR_WUKONG);
+        // 悟空卡片（可点击切换）
+        this.wukongCard = this.add.rectangle(80, y, 110, 40, GAME_CONFIG.COLOR_WUKONG)
+            .setInteractive({ useHandCursor: true });
+        this.wukongCard.on('pointerdown', (pointer, lx, ly, event) => {
+            event.stopPropagation();   // 阻止冒泡到全局 pointerdown（避免误触跳跃）
+            this.switchTo('wukong');
+        });
         this.add.text(80, y - 5, '悟空 [1]', {
             fontSize: '14px', color: '#FFFFFF', fontStyle: 'bold'
         }).setOrigin(0.5);
-        this.wukongCDText = this.add.text(80, y + 12, '技能就绪', {
+        this.wukongCDText = this.add.text(80, y + 12, '防火墙', {
             fontSize: '11px', color: '#FFFFFF'
         }).setOrigin(0.5);
 
-        // 八戒卡片
-        this.bajieCard = this.add.rectangle(210, y, 110, 40, GAME_CONFIG.COLOR_BAJIE);
+        // 八戒卡片（可点击切换）
+        this.bajieCard = this.add.rectangle(210, y, 110, 40, GAME_CONFIG.COLOR_BAJIE)
+            .setInteractive({ useHandCursor: true });
+        this.bajieCard.on('pointerdown', (pointer, lx, ly, event) => {
+            event.stopPropagation();
+            this.switchTo('bajie');
+        });
         this.add.text(210, y - 5, '八戒 [2]', {
             fontSize: '14px', color: '#FFFFFF', fontStyle: 'bold'
         }).setOrigin(0.5);
-        this.bajieCDText = this.add.text(210, y + 12, '技能就绪', {
+        this.bajieCDText = this.add.text(210, y + 12, '防巨石', {
             fontSize: '11px', color: '#FFFFFF'
         }).setOrigin(0.5);
 
@@ -257,9 +267,9 @@ class GameScene extends Phaser.Scene {
 
         // 八戒技能无敌
         if (this.activePlayer.isInvincible) {
-            // 撞碎可破坏的障碍
+            // 撞碎可破坏的障碍（小妖怪和巨石都能撞碎）
             if (this.activePlayer.canPass(obstacle) ||
-                obstacle.type === 'rock' || obstacle.type === 'boulder') {
+                obstacle.type === 'monster' || obstacle.type === 'boulder') {
                 obstacle.destroy();
             }
             return;
@@ -308,7 +318,7 @@ class GameScene extends Phaser.Scene {
         // 提示
         const tip = this.add.text(
             GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT / 2 - 80,
-            '⚠ 铁扇公主拦路！',
+            '铁扇公主拦路！',
             {
                 fontSize: '32px', color: '#FF6666', fontStyle: 'bold',
                 stroke: '#000000', strokeThickness: 4
@@ -334,34 +344,24 @@ class GameScene extends Phaser.Scene {
 
         // 走过来：数组 targets 不能用 `x: {from, to}`（Phaser 数组陷阱）
         // → 每个 decoration 独立 tween 到各自的目标 x
-        // 玩家固定在 PLAYER_START_X=200，Boss 走到玩家右边 ~80px 处对峙
-        // 然后自动触发 BossScene（不依赖物理碰撞 —— 跑酷里玩家不动，靠 bbox 重叠不可靠）
-        const midX = GAME_CONFIG.WIDTH * 0.65;     // 中间停留点（~624，让玩家看到"拦路"）
-        const finalX = GAME_CONFIG.PLAYER_START_X + 80;  // 接近玩家（280），两人对峙
+        // 玩家固定在 PLAYER_START_X=200（画面 20.8%），Boss 站到对称位 760（画面 79.2%）
+        // 两人关于画面中线对称对峙，然后自动触发 BossScene
+        const finalX = GAME_CONFIG.WIDTH - GAME_CONFIG.PLAYER_START_X;  // 760，关于中线对称
 
         const walkBoss = (target, onAllDone) => {
             this.tweens.add({
                 targets: target,
-                x: midX,
-                duration: 1000,
+                x: finalX,
+                duration: 1400,
                 ease: 'Sine.easeOut',
-                onComplete: () => {
-                    this.tweens.add({
-                        targets: target,
-                        x: finalX,
-                        duration: 1200,
-                        delay: 400,    // 中间停一下，戏剧停顿
-                        ease: 'Linear',
-                        onComplete: onAllDone,
-                    });
-                },
+                onComplete: onAllDone,
             });
         };
         // 只用 bossSprite 的回调触发（避免两次进 Boss 战）
         walkBoss(this.bossSprite, () => {
-            console.log('[GameScene] 铁扇公主已逼近玩家 → 触发 Boss 战');
-            // 对峙 0.5s 后切场景，让玩家看清"两人对望"
-            this.time.delayedCall(500, () => this.enterBossFight());
+            console.log('[GameScene] 铁扇公主已就位（对称对峙）→ 触发 Boss 战');
+            // 对峙 0.7s 后切场景，让玩家看清"两人对望"
+            this.time.delayedCall(700, () => this.enterBossFight());
         });
         walkBoss(bossHead, null);
     }
@@ -378,13 +378,13 @@ class GameScene extends Phaser.Scene {
 
         this.time.delayedCall(400, () => {
             console.log('[GameScene] starting BossScene now');
-            this.scene.start('BossScene', { score: this.score });
+            this.scene.start('BossScene', { score: this.score, role: this.currentRole });
         });
     }
 
     obstacleName(type) {
         const names = {
-            fire: '火焰', rock: '岩石', fly_rock: '飞石',
+            monster: '小妖怪',
             fire_wall: '火墙', boulder: '巨石'
         };
         return names[type] || '障碍';
@@ -413,9 +413,6 @@ class GameScene extends Phaser.Scene {
         if (Phaser.Input.Keyboard.JustDown(this.key2)) {
             this.switchTo('bajie');
         }
-        if (Phaser.Input.Keyboard.JustDown(this.keyJ)) {
-            this.activePlayer.useSkill();
-        }
 
         // === 更新角色 ===
         this.wukong.update(time, delta);
@@ -442,19 +439,7 @@ class GameScene extends Phaser.Scene {
         this.roleText.setText(this.currentRole === 'wukong' ? '【悟空】' : '【八戒】');
         this.roleText.setColor(this.currentRole === 'wukong' ? '#FF6600' : '#FF69B4');
 
-        // 技能 CD 显示
-        this.updateSkillCDText(this.wukong, this.wukongCDText);
-        this.updateSkillCDText(this.bajie, this.bajieCDText);
+        // 跑酷阶段不显示技能 CD（技能改到 Boss 战才用），卡片文字保持"免火墙/免巨石"静态
         this.updateActiveCardBorder();
-    }
-
-    updateSkillCDText(player, text) {
-        if (player.skillCooldown <= 0) {
-            text.setText('技能就绪 [J]');
-            text.setColor('#00FF88');
-        } else {
-            text.setText(`冷却 ${(player.skillCooldown / 1000).toFixed(1)}s`);
-            text.setColor('#FFFFFF');
-        }
     }
 }

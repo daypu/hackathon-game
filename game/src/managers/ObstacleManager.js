@@ -17,9 +17,7 @@ class ObstacleManager {
      */
     getAvailableTypes(elapsedSec) {
         const types = [];
-        if (elapsedSec >= GAME_CONFIG.UNLOCK_FIRE) types.push('fire');
-        if (elapsedSec >= GAME_CONFIG.UNLOCK_ROCK) types.push('rock');
-        if (elapsedSec >= GAME_CONFIG.UNLOCK_FLY_ROCK) types.push('fly_rock');
+        if (elapsedSec >= GAME_CONFIG.UNLOCK_MONSTER) types.push('monster');
         if (elapsedSec >= GAME_CONFIG.UNLOCK_FIRE_WALL) types.push('fire_wall');
         if (elapsedSec >= GAME_CONFIG.UNLOCK_BOULDER) types.push('boulder');
         return types;

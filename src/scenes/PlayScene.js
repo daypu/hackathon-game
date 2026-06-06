@@ -5,6 +5,7 @@ import { ParticleSystem } from '../entities/particles.js';
 import { drawOpenWorldHud } from '../ui/hud.js';
 import { evaluate } from '../systems/ScoreSystem.js';
 import { ResultScene } from './ResultScene.js';
+import { RaftMiniGameScene } from './RaftMiniGameScene.js';
 import {
   SCENES,
   ZONES,
@@ -19,14 +20,26 @@ import {
 } from '../openWorld.js';
 
 const statByKey = (k) => STATS.find((s) => s.key === k);
+const RAFT_DOCK = { x: 960, y: 620 };
 
 export class PlayScene {
   constructor(game) {
     this.g = game;
     this.r = game.r;
+    this._initialized = false;
+    this._resume = false;
   }
 
   enter() {
+    if (this._initialized && this._resume) {
+      this._resume = false;
+      this.state = 'playing';
+      this.transitionLock = 0.4;
+      this.g.audio.ensure();
+      this.g.audio.startBgm();
+      return;
+    }
+
     this.player = new Player();
     this.sceneKey = 'changan';
     this.currentScene = SCENES[this.sceneKey];
@@ -58,6 +71,7 @@ export class PlayScene {
     };
     this.g.audio.ensure();
     this.g.audio.startBgm();
+    this._initialized = true;
   }
 
   exit() {
@@ -112,8 +126,35 @@ export class PlayScene {
     this.transitionLock = Math.max(0, this.transitionLock - dt);
 
     if (this.player.isDead()) this.#beginEnd(false);
+    else if (this.transitionLock <= 0 && this.#checkRaftDock(input)) return;
     else if (this.transitionLock <= 0 && this.#checkGoal()) this.#beginEnd(true);
     else if (this.transitionLock <= 0) this.#checkTransitions();
+  }
+
+  #checkRaftDock(input) {
+    if (this.sceneKey !== 'liusha') return false;
+
+    const dx = this.player.x - RAFT_DOCK.x;
+    const dy = this.player.y - RAFT_DOCK.y;
+    const near = Math.hypot(dx, dy) < 70;
+    if (!near) return false;
+
+    const cleared = Boolean(this.g.shared.raftCleared);
+    const hint = cleared
+      ? '已完成木筏挑战，继续前进'
+      : '按 Space 开始木筏挑战：撑过 30 秒，护送唐僧过河';
+    if (this.messageTimer <= 0 || this.message === hint) {
+      this.message = hint;
+      this.messageTimer = 0.25;
+    }
+
+    if (!cleared && input.just('confirm')) {
+      this.g.audio.sfx('start');
+      this.g.setScene(new RaftMiniGameScene(this.g, { returnScene: this }));
+      return true;
+    }
+
+    return false;
   }
 
   #updateZone() {
@@ -289,6 +330,7 @@ export class PlayScene {
     }
     ctx.translate(-this.camera.x, -this.camera.y);
     drawOpenWorld(r, this.currentScene, t);
+    this.#drawRaftDock(t);
     for (const p of this.pickups) if (this.#visible(p, 80)) p.draw(r);
     for (const h of this.hazards) if (this.#visible(h, 100)) h.draw(r);
     this.player.draw(r, t);
@@ -312,6 +354,32 @@ export class PlayScene {
 
     if (this.state === 'ending' && !this.reached) this.#vignette(r, 'rgba(80,0,0,0.45)');
     if (this.state === 'paused') this.#drawPause(r);
+  }
+
+  #drawRaftDock(t) {
+    if (this.sceneKey !== 'liusha') return;
+    const r = this.r;
+    const ctx = r.ctx;
+
+    const blink = 0.45 + 0.55 * Math.sin(t * 5);
+    const cleared = Boolean(this.g.shared.raftCleared);
+    const edge = cleared ? '#7ed957' : '#ffce54';
+
+    ctx.save();
+    ctx.globalAlpha = 0.25 + blink * 0.35;
+    r.roundRect(RAFT_DOCK.x - 46, RAFT_DOCK.y - 26, 92, 52, 12, edge, null, 2);
+    ctx.restore();
+
+    r.roundRect(RAFT_DOCK.x - 34, RAFT_DOCK.y - 18, 68, 36, 10, '#8b5a2b', '#2c1b0c', 3);
+    r.rect(RAFT_DOCK.x - 28, RAFT_DOCK.y - 4, 56, 6, '#b98145');
+
+    r.text('木筏渡口', RAFT_DOCK.x, RAFT_DOCK.y - 34, {
+      size: 14,
+      color: edge,
+      align: 'center',
+      weight: '900',
+      shadow: 'rgba(0,0,0,0.7)',
+    });
   }
 
   #progress() {

@@ -1,4 +1,4 @@
-import { GAME } from '../config.js';
+import { ASSETS, GAME } from '../config.js';
 import { RaftMiniGameScene } from './RaftMiniGameScene.js';
 
 export class StartScene {
@@ -9,13 +9,47 @@ export class StartScene {
 
   enter() {
     this.time = 0;
+    this.load = { started: false, done: false, total: 0, loaded: 0 };
+    this.pendingStart = false;
+    this._beginPreload();
   }
 
   update(dt) {
     this.time += dt;
-    if (this.g.input.just('confirm')) {
-      this.g.setScene(new RaftMiniGameScene(this.g, { startScene: this }));
+    if (this.g.input.just('confirm')) this.pendingStart = true;
+    if (this.pendingStart && this.load.done) this.g.setScene(new RaftMiniGameScene(this.g, { startScene: this }));
+  }
+
+  _beginPreload() {
+    if (this.load.started) return;
+    this.load.started = true;
+    if (!this.g.shared.images) this.g.shared.images = {};
+
+    const entries = Object.entries(ASSETS || {});
+    this.load.total = entries.length;
+    if (this.load.total === 0) {
+      this.load.done = true;
+      return;
     }
+
+    // 图片加载失败时返回 null，场景绘制层会自动 fallback 到占位绘制
+    const loadOne = (url) => new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+
+    // 并行预加载，避免开局卡顿
+    Promise.all(
+      entries.map(async ([k, url]) => {
+        const img = await loadOne(url);
+        this.load.loaded += 1;
+        this.g.shared.images[k] = img;
+      }),
+    ).then(() => {
+      this.load.done = true;
+    });
   }
 
   draw() {
@@ -48,7 +82,9 @@ export class StartScene {
       });
     });
 
-    r.text('按 Space / Enter 开始挑战', GAME.width / 2, 420, {
+    const ready = this.load.done;
+    const label = ready ? '按 Space / Enter 开始挑战' : `加载素材中 ${Math.floor((this.load.loaded / Math.max(1, this.load.total)) * 100)}%`;
+    r.text(label, GAME.width / 2, 420, {
       size: 22,
       color: '#fff2b0',
       align: 'center',
@@ -56,5 +92,15 @@ export class StartScene {
       alpha: 0.35 + blink * 0.65,
       shadow: 'rgba(0,0,0,0.7)',
     });
+
+    if (!ready) {
+      r.text('素材加载失败会自动回退到占位绘制', GAME.width / 2, 452, {
+        size: 13,
+        color: '#cfc6e8',
+        align: 'center',
+        weight: '800',
+        alpha: 0.65,
+      });
+    }
   }
 }

@@ -27,6 +27,19 @@ export const PAL = {
   warn: '#ff7a6a',
 };
 
+export const ASSETS = {
+  bgMain: '/assets/bg/bg_liusha_river_main.png',
+  boat: '/assets/boat/boat_broken_ferry.png',
+  shasengIdle: '/assets/characters/shaseng_idle.png',
+  shasengAction: '/assets/characters/shaseng_action.png',
+  tangsengIdle: '/assets/characters/tangseng_idle.png',
+  tangsengPanic: '/assets/characters/tangseng_panic.png',
+  monsterRear: '/assets/monster/monster_rear_river.png',
+  monsterFrontDemon: '/assets/monster/monster_front_demon.png',
+  waveLeft: '/assets/fx/wave_left.png',
+  waveRight: '/assets/fx/wave_right.png',
+};
+
 export const TUNING = {
   roundSeconds: 30,
   introSeconds: 3,
@@ -40,29 +53,29 @@ export const TUNING = {
 
   monster: {
     startDistance: 82,
-    chaseBase: 4.4,
-    chaseRamp: 2.4,
+    chaseBase: 6.1,
+    chaseRamp: 4.1,
     fearNearStart: 26,
     fearNearPerSec: 3.2,
   },
 
   boat: {
     speedMax: 24,
-    speedDecayPerSec: 9,
+    speedDecayPerSec: 13.4,
   },
 
   rowing: {
-    basePush: 11.8,
-    sameKeyFactor: 0.35,
+    basePush: 7.8,
+    sameKeyFactor: 0.22,
     comboMax: 8,
-    comboBonus: 0.08,
+    comboBonus: 0.035,
   },
 
   water: {
     max: 100,
-    bailAmount: 8.6,
-    bailCooldownSeconds: 0.2,
-    waveAdd: 18,
+    bailAmount: 7.2,
+    bailCooldownSeconds: 0.28,
+    waveAdd: 22,
   },
 
   wave: {
@@ -74,28 +87,30 @@ export const TUNING = {
   fear: {
     start: 20,
     max: 100,
-    basePerSec: 0.7,
+    basePerSec: 0.78,
     comfortSuccessReduce: 20,
-    comfortFailAdd: 12,
-    hitByWaveAdd: 7,
-    hitByDemonAdd: 14,
+    comfortFailAdd: 14,
+    hitByWaveAdd: 8,
+    hitByDemonAdd: 16,
   },
 
   dialogue: {
     cooldownSeconds: 7,
     maxSeconds: 3,
-    seqMin: 2,
-    seqMax: 3,
+    seqMin: 3,
+    seqMax: 5,
   },
 
   demon: {
     cooldownSeconds: 6,
-    baseSeconds: 0.6,
-    stepSeconds: 0.9,
-    wrongFearAdd: 10,
-    timeoutFearAdd: 15,
-    speedDebuffSeconds: 2.2,
-    speedDebuffFactor: 0.6,
+    baseSeconds: 0.56,
+    stepSeconds: 0.86,
+    seqMin: 3,
+    seqMax: 5,
+    wrongFearAdd: 12,
+    timeoutFearAdd: 18,
+    speedDebuffSeconds: 2.6,
+    speedDebuffFactor: 0.55,
   },
 
   score: {

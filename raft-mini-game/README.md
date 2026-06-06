@@ -11,6 +11,26 @@ npm run dev
 
 然后打开终端输出的本地地址（通常是 `http://localhost:5173/`）。
 
+## 素材（可选）
+
+将美术素材放到 `public/assets/` 后，游戏会在开始界面自动预加载并在场景中使用；若某张图缺失或加载失败，会自动回退到占位绘制，游戏仍可运行。
+
+建议目录：
+
+```
+public/assets/
+  bg/bg_liusha_river_main.png
+  boat/boat_broken_ferry.png
+  characters/shaseng_idle.png
+  characters/shaseng_action.png
+  characters/tangseng_idle.png
+  characters/tangseng_panic.png
+  monster/monster_rear_river.png
+  monster/monster_front_demon.png
+  fx/wave_left.png
+  fx/wave_right.png
+```
+
 ## 目标
 
 撑过 30 秒，护送唐僧渡过流沙河，不让后方水怪追上破船。

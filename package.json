@@ -1,0 +1,14 @@
+{
+  "name": "xiyou-wanxiang-mitu",
+  "version": "0.1.0",
+  "description": "西游·万象迷途 —— 像素风 2D 取经躲避收集游戏",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

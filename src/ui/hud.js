@@ -219,6 +219,9 @@ function drawCombatButtons(r, combat, t) {
     maxCd: combat.attackMaxCooldown || 0.72,
     color: '#ffce54',
     pulse: Math.sin(t * 6 + 1) * 0.04,
+    charge: combat.attackCharge || 0,
+    chargeMax: combat.attackChargeMax || 3,
+    charging: Boolean(combat.attackCharging),
   });
 
   ctx.save();
@@ -264,6 +267,15 @@ function drawCombatButton(r, b, info) {
     ctx.closePath();
     ctx.fill();
   }
+  if (info.charging) {
+    const chargeRatio = Math.min(1, info.charge / info.chargeMax);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = chargeRatio >= 1 ? '#fff2b0' : '#ffce54';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * chargeRatio);
+    ctx.stroke();
+  }
   ctx.restore();
 
   r.text(b.label, cx, cy + 10, {
@@ -273,7 +285,7 @@ function drawCombatButton(r, b, info) {
     weight: '900',
     shadow: 'rgba(0,0,0,0.75)',
   });
-  r.text(info.cd > 0 ? info.cd.toFixed(1) : info.title, cx, b.y - 8, {
+  r.text(info.charging && info.charge >= info.chargeMax ? '蓄满' : info.cd > 0 ? info.cd.toFixed(1) : info.title, cx, b.y - 8, {
     size: 12,
     color: ready ? info.color : '#cfc6e8',
     align: 'center',

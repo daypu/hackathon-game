@@ -220,10 +220,10 @@ export class Monster {
 
   #drawHp(r) {
     const w = 54;
-    const h = 8;
+    const h = 5;
     const x = this.x - w / 2;
-    const y = this.y - this.r - 18;
+    const y = this.y - this.r - 16;
     r.roundRect(x, y, w, h, 3, 'rgba(0,0,0,0.78)', 'rgba(255,255,255,0.22)', 1);
-    r.roundRect(x + 2, y + 2, (w - 4) * (this.hp / this.maxHp), h - 4, 2, '#ff5b4d');
+    r.roundRect(x + 1, y + 1, (w - 2) * (this.hp / this.maxHp), h - 2, 2, '#ff5b4d');
   }
 }

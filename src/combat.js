@@ -41,9 +41,13 @@ export const HERO_SKILLS = {
 };
 
 export const MONSTER_SPAWNS = [
+  { x: 330, y: 515, tier: 1, kind: 'grunt' },
+  { x: 245, y: 335, tier: 1, kind: 'venom' },
   { x: 575, y: 930, tier: 1, kind: 'grunt' },
   { x: 690, y: 860, tier: 1, kind: 'venom' },
+  { x: 770, y: 465, tier: 1, kind: 'ranged' },
   { x: 860, y: 780, tier: 1, kind: 'grunt' },
+  { x: 945, y: 510, tier: 1, kind: 'stunner' },
   { x: 980, y: 700, tier: 1, kind: 'ranged' },
   { x: 1110, y: 650, tier: 1, kind: 'grunt' },
   { x: 1225, y: 625, tier: 1, kind: 'ranged' },
@@ -51,10 +55,13 @@ export const MONSTER_SPAWNS = [
   { x: 1435, y: 635, tier: 1, kind: 'venom' },
   { x: 1535, y: 635, tier: 2, kind: 'ranged' },
   { x: 1635, y: 610, tier: 2, kind: 'stunner' },
+  { x: 1690, y: 735, tier: 2, kind: 'venom' },
   { x: 1775, y: 720, tier: 3, kind: 'brute' },
   { x: 1905, y: 770, tier: 2, kind: 'ranged' },
+  { x: 1985, y: 675, tier: 2, kind: 'stunner' },
   { x: 2055, y: 700, tier: 3, kind: 'brute' },
   { x: 2160, y: 590, tier: 2, kind: 'stunner' },
+  { x: 2250, y: 470, tier: 2, kind: 'ranged' },
 ];
 
 export const SHOP_ITEMS = [

@@ -14,6 +14,10 @@ export class MenuScene {
   }
 
   enter() {
+    if (new URLSearchParams(location.search).has('boss')) {
+      this.g.setScene(new PlayScene(this.g));
+      return;
+    }
     this.world = new World();
     this.ambient = [];
     for (let i = 0; i < 4; i++) {

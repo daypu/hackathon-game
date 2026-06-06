@@ -5,6 +5,7 @@ import { Monster } from '../entities/Monster.js';
 import { ParticleSystem } from '../entities/particles.js';
 import { combatButtonAt, drawHubHud, partySlotAt, shopHitAt } from '../ui/hud.js';
 import { MONSTER_SPAWNS, SKILL_COOLDOWN, skillFor } from '../combat.js';
+import { WUZI_BOSS_FRAME, WUZI_BOSS_PHASES } from '../assets/boss/index.js';
 import {
   NPCS,
   completeStoryObjective,
@@ -25,6 +26,16 @@ import {
   getWorldImage,
 } from '../openWorld.js';
 
+const BOSS_MAX_HP = 360;
+const BOSS_SPAWN = { x: 2050, y: 610 };
+const BOSS_PLAYER_SPAWN = { x: 1870, y: 745 };
+const CHARGE_ATTACK_SECONDS = 3;
+const bossSheets = WUZI_BOSS_PHASES.map((phase) => {
+  const img = new Image();
+  img.src = phase.sheet;
+  return img;
+});
+
 // 关卡总图（hub）：自由探索，走入发光法阵即可进入对应关卡。
 // 关卡玩法内容待开发，这里通过 #startLevel 保留统一接入接口。
 export class PlayScene {
@@ -33,6 +44,8 @@ export class PlayScene {
     this.r = game.r;
     // 调试：URL 带 ?overview 时进入全图法阵校对视图
     this.debugOverview = new URLSearchParams(location.search).has('overview');
+    // 调试：URL 带 ?boss 时直接进入无字经魔 Boss 战
+    this.debugBoss = new URLSearchParams(location.search).has('boss');
   }
 
   enter() {
@@ -43,7 +56,10 @@ export class PlayScene {
     this.npcs = NPCS.map((def) => new Npc(def));
     this.monsters = MONSTER_SPAWNS.map((spawn) => new Monster(spawn));
     this.skillEffects = [];
+    this.delayedAttacks = [];
     this.shopOpen = false;
+    this.boss = null;
+    this.bossCleared = false;
     this.camera = makeCamera(this.player);
     this.state = 'playing'; // playing | paused
     this.activeLevel = null;
@@ -57,8 +73,12 @@ export class PlayScene {
     this.coins = 0;
     this.attackCooldown = 0;
     this.skillCooldown = 0;
+    this.attackCharging = false;
+    this.attackCharge = 0;
+    this.pointerAttackDown = false;
     this.g.audio.ensure();
     this.g.audio.startBgm();
+    if (this.debugBoss) this.#startBossPrelude();
   }
 
   exit() {
@@ -67,6 +87,11 @@ export class PlayScene {
 
   update(dt) {
     const input = this.g.input;
+
+    if (this.boss) {
+      this.#updateBoss(dt, input);
+      return;
+    }
 
     if (this.state === 'paused') {
       if (input.just('pause') || input.just('confirm')) this.state = 'playing';
@@ -81,6 +106,7 @@ export class PlayScene {
       if (input.just('confirm')) this.#advanceDialogue();
       this.fx.update(dt);
       this.#updateSkillEffects(dt);
+      this.#updateDelayedAttacks(dt);
       this.messageTimer = Math.max(0, this.messageTimer - dt);
       this.toastTimer = Math.max(0, this.toastTimer - dt);
       return;
@@ -97,7 +123,7 @@ export class PlayScene {
 
       const combatAction = combatButtonAt(input.pointer.x, input.pointer.y);
       if (combatAction) {
-        if (combatAction === 'attack') this.#normalAttack(this.#inputAim(input));
+        if (combatAction === 'attack') this.#beginAttackCharge(this.#inputAim(input), true);
         else this.#useSkill(this.#inputAim(input));
         return;
       }
@@ -118,6 +144,7 @@ export class PlayScene {
     for (const npc of this.npcs) npc.update(dt, this.player);
     this.#updateMonsters(dt);
     this.#updateSkillEffects(dt);
+    this.#updateDelayedAttacks(dt);
     this.nearNpc = this.#nearestNpc();
 
     // 进入/离开法阵检测
@@ -147,10 +174,11 @@ export class PlayScene {
     this.enterLock = Math.max(0, this.enterLock - dt);
     this.attackCooldown = Math.max(0, this.attackCooldown - dt);
     this.skillCooldown = Math.max(0, this.skillCooldown - dt);
+    this.#updateAttackCharge(dt, input);
+    this.#updateAttackCharge(dt, input);
 
-    if (input.just('attack')) {
-      this.#normalAttack(this.#inputAim(input));
-    }
+    if (input.just('attack')) this.#beginAttackCharge(this.#inputAim(input), false);
+    if (input.justReleased('attack')) this.#releaseAttackCharge(this.#inputAim(input));
     if (input.just('skill')) {
       this.#useSkill(this.#inputAim(input));
     }
@@ -173,16 +201,20 @@ export class PlayScene {
       const hit = monster.update(dt, this.player);
       if (!hit) continue;
       if (hit.projectile) {
-        this.skillEffects.push({
-          type: 'bolt',
+        this.#queueDelayedAttack({
           x1: hit.from.x,
           y1: hit.from.y - 12,
-          x2: hit.to.x,
-          y2: hit.to.y - 10,
+          x: hit.to.x,
+          y: hit.to.y,
+          r: 28,
+          delay: 1.15,
+          damage: hit.damage,
+          stun: hit.stun,
+          slow: hit.slow,
           color: hit.color,
-          life: 0.28,
-          max: 0.28,
+          label: '妖火',
         });
+        continue;
       }
       if (this.player.isCurrentDead()) continue;
       const result = this.player.damage('mana', hit.damage, {
@@ -203,19 +235,58 @@ export class PlayScene {
       this.fx.text(this.player.x, this.player.y - 38, '角色倒下', '#ff6b5e', { size: 14, life: 0.7 });
       return;
     }
-    this.attackCooldown = 0.72;
+    this.#performNormalAttack(dir, false);
+  }
+
+  #beginAttackCharge(dir = null, pointer = false) {
+    if (this.attackCooldown > 0 || this.player.isCurrentDead()) return;
+    this.attackCharging = true;
+    this.attackCharge = 0;
+    this.chargeAim = dir || this.#aimDir();
+    this.pointerAttackDown = pointer;
+  }
+
+  #updateAttackCharge(dt, input) {
+    if (!this.attackCharging) return;
+    this.attackCharge = Math.min(CHARGE_ATTACK_SECONDS, this.attackCharge + dt);
+    this.chargeAim = this.#inputAim(input);
+    if (this.pointerAttackDown && !input.pointer.down) {
+      if (this.boss?.state === 'fight') this.#releaseBossAttackCharge(this.chargeAim);
+      else this.#releaseAttackCharge(this.chargeAim);
+    }
+  }
+
+  #releaseAttackCharge(dir = null) {
+    if (!this.attackCharging) return;
+    const charged = this.attackCharge >= CHARGE_ATTACK_SECONDS;
+    this.attackCharging = false;
+    this.pointerAttackDown = false;
+    this.#performNormalAttack(dir || this.chargeAim || this.#aimDir(), charged);
+  }
+
+  #performNormalAttack(dir = null, charged = false) {
+    if (this.attackCooldown > 0) return;
+    this.attackCooldown = charged ? 1.05 : 0.72;
     const aim = dir || this.#aimDir();
-    this.player.playAction('attack', '#ffce54', aim);
-    const targets = this.#frontConeMonsters(92, 1.05, aim);
+    this.player.playAction(charged ? 'chargedAttack' : 'attack', charged ? '#fff2b0' : '#ffce54', aim);
+    const targets = this.#frontConeMonsters(charged ? 150 : 92, charged ? 1.35 : 1.05, aim);
     if (targets.length === 0) {
       this.fx.text(this.player.x, this.player.y - 36, '未命中', '#cfc6e8');
       return;
     }
     for (const target of targets) {
-      this.#damageMonster(target, 8 + this.player.attackBonus, {
-        color: '#ffce54',
-        label: '普攻',
-        knockback: { x: aim.x, y: aim.y, force: 34 },
+      this.#damageMonster(target, (charged ? 22 : 8) + this.player.attackBonus, {
+        color: charged ? '#fff2b0' : '#ffce54',
+        label: charged ? '蓄力击' : '普攻',
+        knockback: { x: aim.x, y: aim.y, force: charged ? 78 : 34 },
+      });
+    }
+    if (charged) {
+      this.fx.burst(this.player.x + aim.x * 52, this.player.y + aim.y * 52, 26, {
+        color: '#fff2b0',
+        speed: 210,
+        life: 0.5,
+        size: 5,
       });
     }
   }
@@ -324,6 +395,40 @@ export class PlayScene {
   #updateSkillEffects(dt) {
     for (const e of this.skillEffects) e.life -= dt;
     this.skillEffects = this.skillEffects.filter((e) => e.life > 0);
+  }
+
+  #queueDelayedAttack(opts) {
+    this.delayedAttacks.push({
+      ...opts,
+      timer: opts.delay,
+      max: opts.delay,
+      exploded: false,
+    });
+  }
+
+  #updateDelayedAttacks(dt) {
+    for (const atk of this.delayedAttacks) {
+      atk.timer -= dt;
+      if (atk.timer > 0 || atk.exploded) continue;
+      atk.exploded = true;
+      this.skillEffects.push({
+        type: 'impact',
+        x: atk.x,
+        y: atk.y,
+        r: atk.r,
+        color: atk.color,
+        life: 0.32,
+        max: 0.32,
+      });
+      if (!this.player.isCurrentDead() && Math.hypot(this.player.x - atk.x, this.player.y - atk.y) <= atk.r) {
+        const result = this.player.damage('mana', atk.damage, { stun: atk.stun || 0 });
+        if (result.applied) {
+          this.fx.text(this.player.x, this.player.y - 32, `${atk.label || '远程'} -${atk.damage}`, '#ff7a6a');
+          if (atk.slow) this.player.applyWeb(atk.slow);
+        }
+      }
+    }
+    this.delayedAttacks = this.delayedAttacks.filter((atk) => !atk.exploded);
   }
 
   #damageMonster(monster, damage, opts = {}) {
@@ -441,6 +546,10 @@ export class PlayScene {
       this.toast = `已点亮：${lv.label}`;
       this.message = currentStoryInfo(this.story).objective || result.chapter.startMessage;
       this.messageTimer = 6;
+      if (lv.key === 'huoyanshan' && !this.bossCleared) {
+        this.#startBossPrelude();
+        return;
+      }
     } else if (before.targetLevel) {
       const target = LEVELS.find((level) => level.key === before.targetLevel);
       this.toast = `主线目标：先去「${target ? target.label : before.targetLevel}」`;
@@ -519,12 +628,13 @@ export class PlayScene {
     ctx.save();
     ctx.translate(-this.camera.x, -this.camera.y);
     drawWorld(r, t, this.activeLevel ? this.activeLevel.key : null, this.#levelStates());
+    if (this.boss) this.#drawBossWorld(r, t);
     this.#drawActors(r, t);
     this.#drawSkillEffects(r, t);
     this.fx.draw(r);
     ctx.restore();
 
-    drawHubHud(r, this.player, t, {
+    if (!this.boss) drawHubHud(r, this.player, t, {
       camera: this.camera,
       levels: LEVELS,
       activeLevel: this.activeLevel,
@@ -538,6 +648,9 @@ export class PlayScene {
         skillMaxCooldown: SKILL_COOLDOWN,
         skillLabel: skillFor(this.player.characterKey).label,
         skillColor: skillFor(this.player.characterKey).color,
+        attackCharge: this.attackCharge,
+        attackChargeMax: CHARGE_ATTACK_SECONDS,
+        attackCharging: this.attackCharging,
       },
       shop: {
         coins: this.coins,
@@ -561,6 +674,7 @@ export class PlayScene {
       message: this.messageTimer > 0 ? this.message : '',
       toast: this.toastTimer > 0 ? this.toast : '',
     });
+    else this.#drawBossOverlay(r);
 
     if (this.state === 'paused') this.#drawPause(r);
   }
@@ -582,8 +696,377 @@ export class PlayScene {
     return Object.fromEntries(LEVELS.map((level) => [level.key, levelProgressState(this.story, level.key)]));
   }
 
+  #startBossPrelude() {
+    this.bossReturn = { ...BOSS_PLAYER_SPAWN };
+    this.player.setPosition(BOSS_PLAYER_SPAWN.x, BOSS_PLAYER_SPAWN.y);
+    this.camera = makeCamera(this.player);
+    this.shopOpen = false;
+    this.boss = {
+      state: 'intro',
+      hp: BOSS_MAX_HP,
+      maxHp: BOSS_MAX_HP,
+      phase: 0,
+      attackTimer: 1.2,
+      hurtFlash: 0,
+      introIndex: 0,
+      winTimer: 0,
+      x: BOSS_SPAWN.x,
+      y: BOSS_SPAWN.y,
+      lines: [
+        '火焰山妖火退去，通往灵山的经页却忽然化为一片空白。',
+        '六贼影相自无字经中浮现：若心念未定，见经亦无经。',
+        '无字经魔降临。击破三重心魔，雷音寺金光方能显现。',
+      ],
+    };
+    this.g.audio.sfx('start');
+  }
+
+  #updateBoss(dt, input) {
+    this.fx.update(dt);
+    this.#updateSkillEffects(dt);
+    this.#updateDelayedAttacks(dt);
+    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+    this.skillCooldown = Math.max(0, this.skillCooldown - dt);
+
+    if (this.boss.state === 'intro') {
+      if (input.just('confirm')) {
+        if (this.boss.introIndex < this.boss.lines.length - 1) this.boss.introIndex++;
+        else this.boss.state = 'fight';
+      }
+      return;
+    }
+
+    if (this.boss.state === 'won') {
+      this.boss.winTimer += dt;
+      if (input.just('confirm') && this.boss.winTimer > 0.4) {
+        this.bossCleared = true;
+        this.player.setPosition(this.bossReturn.x, this.bossReturn.y);
+        this.camera = makeCamera(this.player);
+        this.message = '无字经魔退散，雷音寺金光重新显现。去寻找接引僧，完成最后一步。';
+        this.messageTimer = 6;
+        this.boss = null;
+      }
+      return;
+    }
+
+    this.player.updateFree(dt, input, worldBounds(), WORLD.colliders, WORLD.walkZones);
+    this.camera = makeCamera(this.player);
+    if (input.just('attack')) this.#beginAttackCharge(this.#inputAim(input), false);
+    if (input.justReleased('attack')) this.#releaseBossAttackCharge(this.#inputAim(input));
+    if (input.just('skill')) this.#bossSkill(this.#inputAim(input));
+    if (input.pointer.justDown) {
+      const combatAction = combatButtonAt(input.pointer.x, input.pointer.y);
+      if (combatAction === 'attack') this.#beginAttackCharge(this.#inputAim(input), true);
+      if (combatAction === 'skill') this.#bossSkill(this.#inputAim(input));
+    }
+
+    this.boss.hurtFlash = Math.max(0, this.boss.hurtFlash - dt);
+    this.boss.phase = this.#bossPhase();
+    this.boss.attackTimer -= dt;
+    if (this.boss.attackTimer <= 0) {
+      this.#bossAttack();
+      this.boss.attackTimer = [1.45, 1.18, 0.92][this.boss.phase];
+    }
+  }
+
+  #bossNormalAttack(dir) {
+    if (this.attackCooldown > 0 || this.boss.state !== 'fight') return;
+    this.#performBossAttack(dir, false);
+  }
+
+  #releaseBossAttackCharge(dir = null) {
+    if (!this.attackCharging) return;
+    const charged = this.attackCharge >= CHARGE_ATTACK_SECONDS;
+    this.attackCharging = false;
+    this.pointerAttackDown = false;
+    this.#performBossAttack(dir || this.chargeAim || this.#aimDir(), charged);
+  }
+
+  #performBossAttack(dir, charged) {
+    if (this.attackCooldown > 0 || this.boss.state !== 'fight') return;
+    this.attackCooldown = charged ? 1.05 : 0.72;
+    const aim = dir || this.#aimDir();
+    this.player.playAction(charged ? 'chargedAttack' : 'attack', charged ? '#fff2b0' : '#ffce54', aim);
+    if (this.#bossInCone(charged ? 165 : 105, charged ? 1.35 : 1.05, aim)) {
+      this.#damageBoss((charged ? 22 : 8) + this.player.attackBonus, charged ? '#fff2b0' : '#ffce54', charged ? '蓄力击' : '普攻');
+    } else {
+      this.fx.text(this.player.x, this.player.y - 36, '未命中', '#cfc6e8', { size: 14, life: 0.55 });
+    }
+  }
+
+  #bossSkill(dir) {
+    if (this.skillCooldown > 0 || this.boss.state !== 'fight') return;
+    const skill = skillFor(this.player.characterKey);
+    const aim = dir || this.#aimDir();
+    this.skillCooldown = SKILL_COOLDOWN;
+    this.player.playAction('skill', skill.color, aim);
+    const effect = this.#createSkillEffect(skill, aim);
+    this.skillEffects.push(effect);
+    if (this.#skillHitsBoss(skill, effect)) {
+      this.#damageBoss(skill.damage + this.player.skillBonus, skill.color, skill.label);
+    }
+    if (skill.heal) {
+      this.player.heal('faith', skill.heal);
+      this.fx.text(this.player.x, this.player.y - 48, `信念 +${skill.heal}`, '#fff2b0');
+    }
+    this.g.audio.sfx('good');
+  }
+
+  #bossAttack() {
+    const phase = this.#bossPhase();
+    const damage = [7, 10, 13][phase];
+    const color = ['#b06bd8', '#ff7a22', '#ffce54'][phase];
+    this.#queueDelayedAttack({
+      x1: this.boss.x,
+      y1: this.boss.y - 95,
+      x: this.player.x,
+      y: this.player.y,
+      r: [54, 62, 72][phase],
+      delay: [0.9, 0.78, 0.66][phase],
+      damage,
+      stun: phase === 2 ? 0.25 : 0,
+      color,
+      label: '心魔',
+    });
+  }
+
+  #damageBoss(amount, color, label) {
+    this.boss.hp = Math.max(0, this.boss.hp - amount);
+    this.boss.hurtFlash = 0.2;
+    this.fx.text(this.boss.x, this.boss.y - 130, `${label} -${amount}`, color, { size: 18, life: 0.7 });
+    this.fx.burst(this.boss.x, this.boss.y - 40, 18, { color, speed: 150, life: 0.45, size: 5 });
+    if (this.boss.hp <= 0) {
+      this.boss.state = 'won';
+      this.boss.winTimer = 0;
+      this.fx.burst(this.boss.x, this.boss.y - 40, 55, { color: '#fff2b0', speed: 260, life: 1, size: 6 });
+      this.g.audio.sfx('win');
+    } else {
+      const newPhase = this.#bossPhase();
+      if (newPhase !== this.boss.phase) {
+        this.boss.phase = newPhase;
+        this.fx.burst(this.boss.x, this.boss.y - 45, 42, { color: '#ff7a22', speed: 220, life: 0.8, size: 6 });
+      }
+      this.g.audio.sfx('hit');
+    }
+  }
+
+  #bossPhase() {
+    const ratio = this.boss.hp / this.boss.maxHp;
+    if (ratio > 0.66) return 0;
+    if (ratio > 0.33) return 1;
+    return 2;
+  }
+
+  #bossCenter() {
+    return { x: this.boss.x, y: this.boss.y - 35, r: 178 };
+  }
+
+  #bossInCone(range, angle, dir) {
+    const b = this.#bossCenter();
+    const dx = b.x - this.player.x;
+    const dy = b.y - this.player.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    if (dist > range + b.r * 0.65) return false;
+    const dot = (dx / dist) * dir.x + (dy / dist) * dir.y;
+    return dot >= Math.cos(angle / 2);
+  }
+
+  #skillHitsBoss(skill, effect) {
+    const b = this.#bossCenter();
+    if (skill.type === 'aoe') return Math.hypot(b.x - effect.x, b.y - effect.y) <= effect.r + b.r * 0.5;
+    if (skill.type === 'cone') {
+      const dx = b.x - effect.x;
+      const dy = b.y - effect.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist > effect.range + b.r * 0.45) return false;
+      const dot = (dx / dist) * effect.dir.x + (dy / dist) * effect.dir.y;
+      return dot >= Math.cos(effect.angle / 2);
+    }
+    const d2 = distanceToSegmentSq(b.x, b.y, effect.x1, effect.y1, effect.x2, effect.y2);
+    const hitR = (skill.width || 30) + b.r * 0.55;
+    return d2 <= hitR * hitR;
+  }
+
+  #drawBossWorld(r, t) {
+    const ctx = r.ctx;
+    const g = ctx.createRadialGradient(this.boss.x, this.boss.y - 55, 40, this.boss.x, this.boss.y - 55, 300);
+    g.addColorStop(0, 'rgba(120,64,180,0.38)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(this.boss.x - 330, this.boss.y - 360, 660, 660);
+    this.#drawBossSprite(r, t);
+  }
+
+  #drawBossOverlay(r) {
+    this.#drawBossHp(r);
+    if (this.boss.state === 'intro') {
+      this.#drawBossIntro(r);
+      return;
+    }
+    this.#drawBossCombatButtons(r);
+
+    if (this.boss.state === 'won') {
+      r.roundRect(170, 394, 620, 74, 16, 'rgba(10,8,18,0.88)', '#fff2b0', 3);
+      r.text('无字经魔退散，经页显现金字。', GAME.width / 2, 424, {
+        size: 22,
+        color: '#fff2b0',
+        align: 'center',
+        weight: '900',
+        shadow: 'rgba(0,0,0,0.8)',
+      });
+      r.text('按 空格 返回大地图，继续前往雷音寺', GAME.width / 2, 451, {
+        size: 14,
+        color: '#cfc6e8',
+        align: 'center',
+        weight: '700',
+      });
+    }
+  }
+
+  #drawBossIntro(r) {
+    const line = this.boss.lines[this.boss.introIndex];
+    r.roundRect(120, 360, 720, 112, 18, 'rgba(10,8,18,0.92)', '#b06bd8', 3);
+    r.text('无字经魔', GAME.width / 2, 392, {
+      size: 26,
+      color: '#ffce54',
+      align: 'center',
+      weight: '900',
+      shadow: 'rgba(0,0,0,0.85)',
+    });
+    r.text(line, GAME.width / 2, 424, {
+      size: 16,
+      color: '#fff2b0',
+      align: 'center',
+      weight: '800',
+      shadow: 'rgba(0,0,0,0.85)',
+    });
+    r.text('按 空格 继续', GAME.width / 2, 452, {
+      size: 13,
+      color: '#cfc6e8',
+      align: 'center',
+      weight: '700',
+    });
+  }
+
+  #drawBossSprite(r, t) {
+    const ctx = r.ctx;
+    const phase = this.boss ? this.#bossPhase() : 0;
+    const img = bossSheets[phase];
+    if (!img || !img.complete) return;
+    const frame = Math.floor(t * (phase === 2 ? 7 : 5)) % WUZI_BOSS_FRAME.count;
+    const size = 292 + Math.sin(t * 2) * 5;
+    const x = this.boss.x - size / 2;
+    const y = this.boss.y - size / 2 + Math.sin(t * 2.5) * 3;
+    ctx.save();
+    if (this.boss?.hurtFlash > 0) ctx.globalAlpha = 0.72;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      img,
+      frame * WUZI_BOSS_FRAME.w,
+      0,
+      WUZI_BOSS_FRAME.w,
+      WUZI_BOSS_FRAME.h,
+      x,
+      y,
+      size,
+      size
+    );
+    ctx.restore();
+  }
+
+  #drawBossHp(r) {
+    const w = 520;
+    const h = 8;
+    const x = GAME.width / 2 - w / 2;
+    const y = 30;
+    const life = this.boss.maxHp / 3;
+    r.roundRect(x - 10, y - 23, w + 20, 47, 12, 'rgba(5,4,10,0.78)', '#ffce54', 2);
+    r.text(`无字经魔 · ${WUZI_BOSS_PHASES[this.#bossPhase()].label}`, GAME.width / 2, y - 7, {
+      size: 15,
+      color: '#fff2b0',
+      align: 'center',
+      weight: '900',
+      shadow: 'rgba(0,0,0,0.85)',
+    });
+    for (let i = 0; i < 3; i++) {
+      const barY = y + 7 + i * 10;
+      const remaining = Math.max(0, Math.min(life, this.boss.hp - life * (2 - i)));
+      const ratio = remaining / life;
+      const color = i === 0 ? '#ff5b32' : i === 1 ? '#ff7a22' : '#b06bd8';
+      r.roundRect(x, barY, w, h, 4, 'rgba(0,0,0,0.72)', 'rgba(255,255,255,0.16)', 1);
+      if (ratio > 0) r.roundRect(x + 2, barY + 2, (w - 4) * ratio, h - 4, 2, color);
+    }
+  }
+
+  #drawBossCombatButtons(r) {
+    // Boss 战中保留右下角按钮提示，点击判定沿用 HUD 的 combatButtonAt。
+    r.roundRect(GAME.width - 174, GAME.height - 88, 68, 68, 34, 'rgba(10,8,18,0.7)', '#6fb0c8', 3);
+    r.roundRect(GAME.width - 90, GAME.height - 88, 68, 68, 34, 'rgba(10,8,18,0.7)', '#ffce54', 3);
+    r.text('技', GAME.width - 140, GAME.height - 45, { size: 30, color: '#fff2b0', align: 'center', weight: '900' });
+    r.text('攻', GAME.width - 56, GAME.height - 45, { size: 30, color: '#fff2b0', align: 'center', weight: '900' });
+    if (this.skillCooldown > 0) {
+      r.text(this.skillCooldown.toFixed(1), GAME.width - 140, GAME.height - 94, {
+        size: 12,
+        color: '#cfc6e8',
+        align: 'center',
+        weight: '800',
+      });
+    }
+    if (this.attackCharging) {
+      const ratio = Math.min(1, this.attackCharge / CHARGE_ATTACK_SECONDS);
+      const cx = GAME.width - 56;
+      const cy = GAME.height - 54;
+      const ctx = r.ctx;
+      ctx.save();
+      ctx.strokeStyle = '#fff2b0';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 39, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   #drawSkillEffects(r, t) {
     const ctx = r.ctx;
+    for (const atk of this.delayedAttacks) {
+      const p = Math.max(0, Math.min(1, 1 - atk.timer / atk.max));
+      ctx.save();
+      if (atk.x1 !== undefined && atk.y1 !== undefined) {
+        const headX = atk.x1 + (atk.x - atk.x1) * p;
+        const headY = atk.y1 + (atk.y - atk.y1) * p;
+        ctx.globalAlpha = 0.22 + p * 0.46;
+        ctx.strokeStyle = atk.color;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.setLineDash([10, 8]);
+        ctx.lineDashOffset = -t * 85;
+        ctx.beginPath();
+        ctx.moveTo(atk.x1, atk.y1);
+        ctx.lineTo(headX, headY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.85;
+        r.circle(headX, headY, 6 + p * 3, atk.color);
+        ctx.globalAlpha = 0.55;
+        r.circle(headX, headY, 12 + p * 7, atk.color);
+      }
+      ctx.globalAlpha = 0.22 + p * 0.34;
+      ctx.fillStyle = atk.color;
+      ctx.beginPath();
+      ctx.arc(atk.x, atk.y, atk.r * (0.45 + p * 0.55), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = '#fff2b0';
+      ctx.lineWidth = 2 + p * 3;
+      ctx.setLineDash([8, 6]);
+      ctx.lineDashOffset = -t * 50;
+      ctx.beginPath();
+      ctx.arc(atk.x, atk.y, atk.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
     for (const e of this.skillEffects) {
       const a = Math.max(0, e.life / e.max);
       if (e.type === 'beam') {
@@ -667,6 +1150,17 @@ export class PlayScene {
         ctx.stroke();
         ctx.globalAlpha = 0.8 * a;
         r.circle(e.x2, e.y2, 7 + (1 - a) * 8, e.color);
+        ctx.restore();
+      } else if (e.type === 'impact') {
+        ctx.save();
+        ctx.globalAlpha = 0.18 + a * 0.42;
+        r.circle(e.x, e.y, e.r * (1.15 - a * 0.25), e.color);
+        ctx.globalAlpha = 0.7 * a;
+        ctx.strokeStyle = '#fff2b0';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.r * (1.25 - a * 0.2), 0, Math.PI * 2);
+        ctx.stroke();
         ctx.restore();
       }
     }

@@ -23,6 +23,7 @@ export class Input {
   constructor(canvas) {
     this.down = new Set();
     this.pressed = new Set(); // 本帧刚按下
+    this.released = new Set(); // 本帧刚松开
     this.pointer = { x: 0, y: 0, justDown: false, down: false };
 
     window.addEventListener('keydown', (e) => {
@@ -35,7 +36,10 @@ export class Input {
 
     window.addEventListener('keyup', (e) => {
       const a = KEY_MAP[e.code];
-      if (a) this.down.delete(a);
+      if (a) {
+        this.down.delete(a);
+        this.released.add(a);
+      }
     });
 
     if (canvas) {
@@ -66,6 +70,10 @@ export class Input {
     return this.pressed.has(a);
   }
 
+  justReleased(a) {
+    return this.released.has(a);
+  }
+
   // 水平/垂直方向轴（-1 / 0 / 1）
   axisY() {
     return (this.isDown('down') ? 1 : 0) - (this.isDown('up') ? 1 : 0);
@@ -77,6 +85,7 @@ export class Input {
   // 每帧末尾调用，清空一次性状态
   postUpdate() {
     this.pressed.clear();
+    this.released.clear();
     this.pointer.justDown = false;
   }
 }

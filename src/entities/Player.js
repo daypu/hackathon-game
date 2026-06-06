@@ -79,7 +79,7 @@ export class Player {
     this.actionColor = color;
     this.actionDirX = dir ? dir.x : this.aimX || this.facing;
     this.actionDirY = dir ? dir.y : this.aimY || 0;
-    this.actionTimer = type === 'skill' ? 0.55 : 0.34;
+    this.actionTimer = type === 'skill' ? 0.55 : type === 'chargedAttack' ? 0.48 : 0.34;
     this.actionMax = this.actionTimer;
     this.animTime += type === 'skill' ? 0.3 : 0.24;
   }
@@ -304,9 +304,11 @@ export class Player {
     const sp = characterFrame(this.character, this.moving || actioning, clock);
     const lift = this.cloudTimer > 0 ? -6 : 0;
     const footY = this.y + HERO_GROUND_OFFSET;
-    const attackCurve = this.action === 'attack' ? Math.sin(progress * Math.PI) : 0;
-    const recoil = this.action === 'attack' ? Math.max(0, progress - 0.55) * 10 : 0;
-    const lunge = this.action === 'attack' ? attackCurve * 22 - recoil : 0;
+    const attacking = this.action === 'attack' || this.action === 'chargedAttack';
+    const power = this.action === 'chargedAttack' ? 1.8 : 1;
+    const attackCurve = attacking ? Math.sin(progress * Math.PI) : 0;
+    const recoil = attacking ? Math.max(0, progress - 0.55) * 10 * power : 0;
+    const lunge = attacking ? attackCurve * 22 * power - recoil : 0;
     const skillLift = this.action === 'skill' ? Math.sin(progress * Math.PI) * 13 : 0;
     const drawX = this.x + lunge * this.actionDirX;
     const drawFootY = footY + lift - skillLift + lunge * this.actionDirY;
@@ -320,7 +322,7 @@ export class Player {
     ctx.fill();
     ctx.restore();
 
-    if (this.action === 'attack') {
+    if (attacking) {
       const slash = Math.sin(progress * Math.PI);
       const angle = Math.atan2(this.actionDirY, this.actionDirX);
       ctx.save();
@@ -333,19 +335,26 @@ export class Player {
       ctx.restore();
 
       ctx.save();
-      ctx.globalAlpha = 0.62 * slash;
-      ctx.strokeStyle = '#ffce54';
-      ctx.lineWidth = 5;
+      ctx.globalAlpha = (this.action === 'chargedAttack' ? 0.82 : 0.62) * slash;
+      ctx.strokeStyle = this.action === 'chargedAttack' ? '#fff2b0' : '#ffce54';
+      ctx.lineWidth = this.action === 'chargedAttack' ? 8 : 5;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(drawX + this.actionDirX * 27, drawFootY - 18 + this.actionDirY * 18, 24, angle - 1.05, angle + 1.05);
+      ctx.arc(drawX + this.actionDirX * 27, drawFootY - 18 + this.actionDirY * 18, 24 * power, angle - 1.05, angle + 1.05);
       ctx.stroke();
       ctx.globalAlpha = 0.35 * slash;
       ctx.strokeStyle = '#fff2b0';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(drawX + this.actionDirX * 32, drawFootY - 18 + this.actionDirY * 18, 31, angle - 0.8, angle + 0.8);
+      ctx.arc(drawX + this.actionDirX * 32, drawFootY - 18 + this.actionDirY * 18, 31 * power, angle - 0.8, angle + 0.8);
       ctx.stroke();
+      if (this.action === 'chargedAttack') {
+        ctx.globalAlpha = 0.28 * slash;
+        ctx.fillStyle = '#fff2b0';
+        ctx.beginPath();
+        ctx.arc(drawX + this.actionDirX * 55, drawFootY - 18 + this.actionDirY * 36, 18 + 12 * slash, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 

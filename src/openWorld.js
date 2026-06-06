@@ -1,15 +1,44 @@
 import { GAME } from './config.js';
 import { Hazard } from './entities/Hazard.js';
 import { Pickup } from './entities/Pickup.js';
+import changanMap from './assets/maps/changan.png';
+import liushaMap from './assets/maps/liusha.png';
+import huoyanMap from './assets/maps/huoyan.png';
+import pansiMap from './assets/maps/pansi.png';
+import yaolinMap from './assets/maps/yaolin.png';
+import lingshanMap from './assets/maps/lingshan.png';
+
+// 上传的场景底图（key -> 图片 URL）。没有的场景仍用程序化绘制。
+const SCENE_IMAGES = {
+  changan: changanMap,
+  liusha: liushaMap,
+  huoyan: huoyanMap,
+  pansi: pansiMap,
+  yaolin: yaolinMap,
+  lingshan: lingshanMap,
+};
+
+const sceneImageEls = {};
+for (const [key, src] of Object.entries(SCENE_IMAGES)) {
+  const img = new Image();
+  img.src = src;
+  sceneImageEls[key] = img;
+}
+
+export function getSceneImage(key) {
+  const img = sceneImageEls[key];
+  return img && img.complete && img.naturalWidth > 0 ? img : null;
+}
 
 // 每个场景都是一张大地图（相机跟随，走到边缘传送点切换场景）
 export const SCENE_W = 1920;
 export const SCENE_H = 1080;
 
 const bgCache = {};
-const PLAY_MARGIN_X = 56;
-const PLAY_MARGIN_TOP = 140; // 顶部给 HUD 留空间
-const PLAY_MARGIN_BOTTOM = 56;
+// 仅留很小的边距，让玩家能一直走到地图真正的边缘（相机也会跟到边界）
+const PLAY_MARGIN_X = 28;
+const PLAY_MARGIN_TOP = 58;
+const PLAY_MARGIN_BOTTOM = 28;
 
 export const SCENE_ORDER = ['changan', 'liusha', 'huoyan', 'pansi', 'yaolin', 'lingshan'];
 
@@ -22,17 +51,25 @@ export const SCENES = {
     miasma: 0.08,
     w: SCENE_W,
     h: SCENE_H,
-    spawn: { x: 300, y: 620 },
+    spawn: { x: 760, y: 640 },
+    // 不可通行的实体（对照长安图实际位置：左上水域、中上木屋、右上水井、左下棚子）
+    colliders: [
+      { x: 0, y: 0, w: 330, h: 300 }, // 左上瀑布 + 水潭
+      { x: 150, y: 470, w: 110, h: 170 }, // 桥下方小溪
+      { x: 825, y: 150, w: 375, h: 230 }, // 中上木屋
+      { x: 1515, y: 160, w: 155, h: 170 }, // 右上水井
+      { x: 600, y: 845, w: 215, h: 105 }, // 左下棚子
+    ],
     exits: [
-      { x: 1856, y: 520, w: 64, h: 240, to: 'liusha', spawn: { x: 140, y: 620 }, label: '前往流沙河' },
+      { x: 1862, y: 380, w: 58, h: 260, to: 'liusha', spawn: { x: 90, y: 540 }, label: '前往流沙河' },
     ],
     hazards: [
-      ['trap', 820, 560], ['yaofeng', 1240, 380], ['trap', 1500, 760],
-      ['yaofeng', 1020, 880], ['trap', 660, 400],
+      ['trap', 1000, 560], ['yaofeng', 1300, 600], ['trap', 600, 680],
+      ['yaofeng', 1600, 520], ['trap', 1150, 880],
     ],
     pickups: [
-      ['peach', 560, 460], ['buddhalight', 900, 660], ['scripturePage', 1320, 320],
-      ['amulet', 1140, 840], ['peach', 1560, 560], ['cloud', 440, 820], ['buddhalight', 1680, 440],
+      ['peach', 760, 560], ['buddhalight', 1180, 620], ['scripturePage', 1450, 560],
+      ['amulet', 460, 760], ['cloud', 1650, 460], ['peach', 980, 880], ['buddhalight', 1500, 820],
     ],
   },
   liusha: {
@@ -44,18 +81,25 @@ export const SCENES = {
     w: SCENE_W,
     h: SCENE_H,
     spawn: { x: 140, y: 620 },
+    colliders: [
+      { x: 20, y: 10, w: 120, h: 100 }, // 左上小屋
+      { x: 1680, y: 20, w: 240, h: 160 }, // 右上凉亭
+      { x: 1600, y: 850, w: 240, h: 170 }, // 右下小屋
+      { x: 180, y: 830, w: 170, h: 170 }, // 左下石碑塔
+      { x: 840, y: 600, w: 200, h: 120 }, // 中央木台
+    ],
     exits: [
-      { x: 0, y: 520, w: 64, h: 240, to: 'changan', spawn: { x: 1780, y: 620 }, label: '回到长安营地' },
+      { x: 0, y: 380, w: 64, h: 260, to: 'changan', spawn: { x: 1780, y: 500 }, label: '回到长安营地' },
       { x: 1856, y: 520, w: 64, h: 240, to: 'huoyan', spawn: { x: 140, y: 620 }, label: '前往火焰山' },
       { x: 850, y: 1016, w: 240, h: 64, to: 'pansi', spawn: { x: 960, y: 240 }, label: '进入盘丝洞' },
     ],
     hazards: [
       ['rock', 640, 640], ['yaofeng', 1200, 600], ['trap', 1480, 760],
-      ['rock', 900, 860], ['yaofeng', 1640, 660], ['trap', 520, 840],
+      ['rock', 900, 860], ['yaofeng', 1640, 660], ['trap', 520, 640],
     ],
     pickups: [
-      ['scripturePage', 520, 620], ['peach', 860, 700], ['cloud', 1280, 600],
-      ['buddhalight', 1560, 620], ['amulet', 720, 880], ['scripturePage', 1700, 780], ['peach', 1080, 860],
+      ['scripturePage', 520, 760], ['peach', 640, 560], ['cloud', 1280, 600],
+      ['buddhalight', 1560, 620], ['amulet', 720, 720], ['scripturePage', 1320, 760], ['peach', 1080, 600],
     ],
   },
   huoyan: {
@@ -67,17 +111,20 @@ export const SCENES = {
     w: SCENE_W,
     h: SCENE_H,
     spawn: { x: 140, y: 620 },
+    colliders: [
+      { x: 370, y: 80, w: 480, h: 420 }, // 中上火山口（焦黑山体）
+    ],
     exits: [
       { x: 0, y: 520, w: 64, h: 240, to: 'liusha', spawn: { x: 1780, y: 620 }, label: '返回流沙河' },
       { x: 1856, y: 520, w: 64, h: 240, to: 'yaolin', spawn: { x: 140, y: 560 }, label: '穿过山口' },
     ],
     hazards: [
-      ['flame', 520, 560], ['flame', 900, 700], ['rock', 1240, 460], ['trap', 1520, 760],
+      ['flame', 520, 620], ['flame', 900, 700], ['rock', 1240, 460], ['trap', 1520, 760],
       ['flame', 1120, 880], ['rock', 700, 880], ['flame', 1660, 560],
     ],
     pickups: [
-      ['peach', 440, 600], ['cloud', 800, 460], ['amulet', 1180, 680],
-      ['scripturePage', 1560, 520], ['peach', 1380, 860], ['cloud', 980, 800],
+      ['peach', 440, 600], ['cloud', 980, 620], ['amulet', 1180, 680],
+      ['scripturePage', 1560, 520], ['peach', 1380, 860], ['cloud', 1000, 800],
     ],
   },
   pansi: {
@@ -89,17 +136,26 @@ export const SCENES = {
     w: SCENE_W,
     h: SCENE_H,
     spawn: { x: 960, y: 240 },
+    colliders: [
+      { x: 0, y: 0, w: 820, h: 90 }, // 顶部洞壁（左）
+      { x: 1120, y: 0, w: 800, h: 90 }, // 顶部洞壁（右），中间留洞口
+      { x: 295, y: 265, w: 80, h: 90 }, // 石笋
+      { x: 730, y: 560, w: 80, h: 90 },
+      { x: 540, y: 805, w: 80, h: 90 },
+      { x: 1020, y: 415, w: 80, h: 90 },
+      { x: 1460, y: 770, w: 80, h: 90 },
+    ],
     exits: [
       { x: 850, y: 1016, w: 240, h: 64, to: 'liusha', spawn: { x: 960, y: 240 }, label: '回到流沙河' },
       { x: 1856, y: 520, w: 64, h: 240, to: 'yaolin', spawn: { x: 140, y: 840 }, label: '钻出洞口' },
     ],
     hazards: [
-      ['web', 520, 460], ['web', 1080, 600], ['trap', 1480, 780], ['yaofeng', 760, 860],
-      ['web', 1320, 420], ['trap', 980, 680],
+      ['web', 460, 460], ['web', 1180, 600], ['trap', 1480, 560], ['yaofeng', 820, 860],
+      ['web', 1300, 300], ['trap', 900, 680],
     ],
     pickups: [
-      ['buddhalight', 460, 600], ['scripturePage', 880, 440], ['amulet', 1240, 680],
-      ['peach', 1560, 560], ['cloud', 680, 880], ['buddhalight', 1480, 420],
+      ['buddhalight', 460, 620], ['scripturePage', 880, 300], ['amulet', 1240, 680],
+      ['peach', 1560, 560], ['cloud', 680, 620], ['buddhalight', 1560, 880],
     ],
   },
   yaolin: {
@@ -111,18 +167,24 @@ export const SCENES = {
     w: SCENE_W,
     h: SCENE_H,
     spawn: { x: 140, y: 560 },
+    colliders: [
+      { x: 520, y: 60, w: 280, h: 290 }, // 左上破庙
+      { x: 460, y: 600, w: 430, h: 380 }, // 中下发光水潭
+      { x: 1180, y: 60, w: 200, h: 180 }, // 上中巨树
+      { x: 1500, y: 720, w: 200, h: 240 }, // 右下巨树
+    ],
     exits: [
       { x: 0, y: 340, w: 64, h: 200, to: 'huoyan', spawn: { x: 1780, y: 620 }, label: '返回火焰山' },
       { x: 0, y: 760, w: 64, h: 200, to: 'pansi', spawn: { x: 1780, y: 540 }, label: '返回盘丝洞' },
       { x: 1856, y: 520, w: 64, h: 240, to: 'lingshan', spawn: { x: 140, y: 560 }, label: '前往灵山入口' },
     ],
     hazards: [
-      ['yaofeng', 560, 460], ['web', 980, 660], ['flame', 1320, 460], ['trap', 760, 860],
-      ['yaofeng', 1500, 740], ['web', 1140, 880], ['flame', 1660, 560],
+      ['yaofeng', 1000, 520], ['web', 980, 320], ['flame', 1320, 460], ['trap', 1100, 700],
+      ['yaofeng', 1500, 520], ['web', 1180, 880], ['flame', 980, 880],
     ],
     pickups: [
-      ['buddhalight', 460, 600], ['scripturePage', 880, 420], ['cloud', 1240, 680],
-      ['amulet', 1520, 460], ['peach', 700, 880], ['buddhalight', 1660, 780], ['scripturePage', 1040, 880],
+      ['buddhalight', 300, 520], ['scripturePage', 980, 200], ['cloud', 1240, 680],
+      ['amulet', 1520, 420], ['peach', 1000, 900], ['buddhalight', 1700, 780], ['scripturePage', 1340, 880],
     ],
   },
   lingshan: {
@@ -133,16 +195,21 @@ export const SCENES = {
     miasma: 0.16,
     w: SCENE_W,
     h: SCENE_H,
-    spawn: { x: 140, y: 560 },
-    exits: [
-      { x: 0, y: 520, w: 64, h: 240, to: 'yaolin', spawn: { x: 1780, y: 560 }, label: '返回万象妖林' },
+    spawn: { x: 140, y: 540 },
+    colliders: [
+      { x: 1240, y: 60, w: 600, h: 560 }, // 右侧金色宝塔（塔身）
+      { x: 80, y: 700, w: 380, h: 280 }, // 左下莲花池
+      { x: 520, y: 780, w: 360, h: 220 }, // 中下莲花池
     ],
-    goal: { x: 1460, y: 430, w: 240, h: 280 },
+    exits: [
+      { x: 0, y: 460, w: 64, h: 240, to: 'yaolin', spawn: { x: 1780, y: 560 }, label: '返回万象妖林' },
+    ],
+    goal: { x: 1300, y: 660, w: 320, h: 200 }, // 塔前台阶广场（结算点）
     hazards: [
-      ['yaofeng', 560, 560], ['rock', 900, 760], ['yaofeng', 1180, 460],
+      ['yaofeng', 620, 520], ['rock', 980, 640], ['yaofeng', 1120, 460],
     ],
     pickups: [
-      ['buddhalight', 520, 400], ['scripturePage', 840, 600], ['amulet', 440, 800], ['peach', 1100, 840],
+      ['buddhalight', 560, 360], ['scripturePage', 820, 600], ['amulet', 300, 540], ['peach', 1060, 840],
     ],
   },
 };
@@ -197,9 +264,19 @@ export function generateOpenWorldEntities() {
 // ---------------------------------------------------------------
 
 export function drawOpenWorld(r, scene, t) {
-  const bg = getCachedBackground(scene);
-  r.ctx.drawImage(bg, 0, 0);
-  drawDynamicDetails(r, scene, t);
+  const img = getSceneImage(scene.key);
+  if (img) {
+    // 上传的精细底图：等比铺满整张大地图
+    const ctx = r.ctx;
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, 0, 0, scene.w, scene.h);
+    ctx.imageSmoothingEnabled = prevSmooth;
+  } else {
+    const bg = getCachedBackground(scene);
+    r.ctx.drawImage(bg, 0, 0);
+    drawDynamicDetails(r, scene, t);
+  }
   drawExits(r, scene, t);
 }
 

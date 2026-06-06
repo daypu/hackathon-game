@@ -14,7 +14,7 @@ export class Player {
     this.x = GAME.playerX;
     this.y = (GAME.roadTop + GAME.roadBottom) / 2;
     this.vy = 0;
-    this.baseSpeed = 300;
+    this.baseSpeed = 180;
     this.stats = { mana: STAT_MAX, faith: STAT_MAX, scripture: STAT_MAX };
     this.shield = false;
     this.cloudTimer = 0;
@@ -66,7 +66,7 @@ export class Player {
     if (this.history.length > maxLen) this.history.length = maxLen;
   }
 
-  updateFree(dt, input, bounds) {
+  updateFree(dt, input, bounds, colliders = []) {
     let speed = this.baseSpeed;
     if (this.webTimer > 0) speed *= 0.42; // 被蛛网粘住，行动迟缓
     if (this.cloudTimer > 0) speed *= 1.4; // 筋斗云加速
@@ -74,9 +74,15 @@ export class Player {
     const ax = input.axisX();
     const ay = input.axisY();
     const len = Math.hypot(ax, ay) || 1;
-    this.x = clamp(this.x + (ax / len) * speed * dt, bounds.x, bounds.x + bounds.w);
-    this.y = clamp(this.y + (ay / len) * speed * dt, bounds.y, bounds.y + bounds.h);
-    this.vy = (ay / len) * speed;
+    const vx = (ax / len) * speed;
+    const vy = (ay / len) * speed;
+
+    // 分轴移动 + 滑动碰撞（撞到建筑/水域时仍可沿墙滑行）
+    const nx = clamp(this.x + vx * dt, bounds.x, bounds.x + bounds.w);
+    if (!this.#blocked(nx, this.y, colliders)) this.x = nx;
+    const ny = clamp(this.y + vy * dt, bounds.y, bounds.y + bounds.h);
+    if (!this.#blocked(this.x, ny, colliders)) this.y = ny;
+    this.vy = vy;
 
     this.cloudTimer = Math.max(0, this.cloudTimer - dt);
     this.webTimer = Math.max(0, this.webTimer - dt);
@@ -88,6 +94,19 @@ export class Player {
     this.history.unshift({ x: this.x, y: this.y });
     const maxLen = PARTY_ORDER.length * SP + 4;
     if (this.history.length > maxLen) this.history.length = maxLen;
+  }
+
+  // 脚部碰撞盒是否与任一实体矩形重叠
+  #blocked(x, y, colliders) {
+    if (!colliders || colliders.length === 0) return false;
+    const fx = x - 11;
+    const fy = y + 2;
+    const fw = 22;
+    const fh = 15;
+    for (const c of colliders) {
+      if (fx < c.x + c.w && fx + fw > c.x && fy < c.y + c.h && fy + fh > c.y) return true;
+    }
+    return false;
   }
 
   pushback(px) {
@@ -156,7 +175,7 @@ export class Player {
   }
 
   getHitbox() {
-    return { x: this.x - 15, y: this.y - 20, w: 30, h: 42 };
+    return { x: this.x - 12, y: this.y - 15, w: 24, h: 32 };
   }
 
   draw(r, t) {
@@ -173,7 +192,7 @@ export class Player {
       const idx = Math.min(i * SP, this.history.length - 1);
       const h = this.history[idx] || { x: this.x, y: this.y };
       // 横向排成取经队列，纵向用延迟轨迹形成蜿蜒跟随
-      this.#drawMember(r, key, this.x - i * 40, h.y, t, i, alpha);
+      this.#drawMember(r, key, this.x - i * 30, h.y, t, i, alpha);
     }
 
     // 护盾光环
@@ -184,7 +203,7 @@ export class Player {
       ctx.strokeStyle = '#ff8a5e';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.ellipse(this.x, this.y - 2, 34 * pulse, 42 * pulse, 0, 0, Math.PI * 2);
+      ctx.ellipse(this.x, this.y - 2, 26 * pulse, 32 * pulse, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 0.15;
       ctx.fillStyle = '#ffb38a';
@@ -199,14 +218,14 @@ export class Player {
     const w = r.spriteWidth(sp, PX);
     const hgt = r.spriteHeight(sp, PX);
     const bob = Math.sin(t * 7 + i * 1.3) * 2; // 行走起伏
-    const lift = this.cloudTimer > 0 ? -7 : 0;
+    const lift = this.cloudTimer > 0 ? -6 : 0;
 
     // 地面阴影
     ctx.save();
     ctx.globalAlpha = 0.28 * alpha;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 22, 18, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy + 17, 14, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -216,12 +235,12 @@ export class Player {
       ctx.globalAlpha = 0.9 * alpha;
       ctx.fillStyle = '#eaf4ff';
       ctx.beginPath();
-      ctx.ellipse(cx, cy + 20, 22, 9, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, cy + 16, 17, 7, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#cfe4ff';
       ctx.beginPath();
-      ctx.ellipse(cx - 8, cy + 22, 8, 5, 0, 0, Math.PI * 2);
-      ctx.ellipse(cx + 9, cy + 22, 9, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx - 6, cy + 18, 6, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 7, cy + 18, 7, 4, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }

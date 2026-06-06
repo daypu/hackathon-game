@@ -28,7 +28,11 @@ export class PlayScene {
 
   enter() {
     this.player = new Player();
-    this.sceneKey = 'changan';
+    const startParam =
+      typeof location !== 'undefined'
+        ? new URLSearchParams(location.search).get('scene')
+        : null;
+    this.sceneKey = SCENES[startParam] ? startParam : 'changan';
     this.currentScene = SCENES[this.sceneKey];
     this.player.setPosition(this.currentScene.spawn.x, this.currentScene.spawn.y);
     this.fx = new ParticleSystem();
@@ -41,7 +45,9 @@ export class PlayScene {
     this.reached = false;
     this.camera = makeCamera(this.player, this.currentScene);
     this.transitionLock = 0.4;
-    this.discovered = new Set(['changan']);
+    this.armedExits = new Set(); // 需先离开传送门再走入才触发，避免出生即被弹走
+    this.debugColliders = typeof location !== 'undefined' && location.search.includes('colliders');
+    this.discovered = new Set([this.sceneKey]);
     this.currentZone = getZoneAt(this.player.x, this.player.y, this.sceneKey);
     this.message = '大地图探索已开启：自由走动，相机会跟随，走到边缘传送点切换场景。';
     this.messageTimer = 4.5;
@@ -90,7 +96,7 @@ export class PlayScene {
       return;
     }
 
-    this.player.updateFree(dt, input, sceneBounds(this.currentScene));
+    this.player.updateFree(dt, input, sceneBounds(this.currentScene), this.currentScene.colliders || []);
     this.camera = makeCamera(this.player, this.currentScene);
     this.#updateZone();
 
@@ -140,10 +146,18 @@ export class PlayScene {
   }
 
   #checkTransitions() {
-    for (const ex of this.currentScene.exits) {
-      if (!isInRect(this.player, ex)) continue;
-      this.#transitionTo(ex.to, ex.spawn, ex.label);
-      break;
+    const exits = this.currentScene.exits;
+    for (let i = 0; i < exits.length; i++) {
+      const ex = exits[i];
+      const inside = isInRect(this.player, ex);
+      if (!inside) {
+        this.armedExits.add(i); // 玩家已离开此门，武装它
+        continue;
+      }
+      if (this.armedExits.has(i)) {
+        this.#transitionTo(ex.to, ex.spawn, ex.label);
+        return;
+      }
     }
   }
 
@@ -155,6 +169,7 @@ export class PlayScene {
     this.player.grace = 0.6; // 进入新场景短暂护佑
     this.camera = makeCamera(this.player, this.currentScene);
     this.transitionLock = 0.4;
+    this.armedExits = new Set();
     this.currentZone = this.currentScene;
     this.miasma = this.currentScene.miasma;
     this.message = label ? `${label} —— ${this.currentScene.desc}` : `进入${this.currentScene.label}`;
@@ -293,6 +308,26 @@ export class PlayScene {
     for (const h of this.hazards) if (this.#visible(h, 100)) h.draw(r);
     this.player.draw(r, t);
     this.fx.draw(r);
+    if (this.debugColliders) {
+      ctx.lineWidth = 4;
+      for (const c of this.currentScene.colliders || []) {
+        ctx.fillStyle = 'rgba(255,0,255,0.25)';
+        ctx.fillRect(c.x, c.y, c.w, c.h);
+        ctx.strokeStyle = '#ff2fff';
+        ctx.strokeRect(c.x, c.y, c.w, c.h);
+      }
+      for (const ex of this.currentScene.exits) {
+        ctx.fillStyle = 'rgba(0,220,255,0.3)';
+        ctx.fillRect(ex.x, ex.y, ex.w, ex.h);
+        ctx.strokeStyle = '#00e0ff';
+        ctx.strokeRect(ex.x, ex.y, ex.w, ex.h);
+      }
+      if (this.currentScene.goal) {
+        const g = this.currentScene.goal;
+        ctx.fillStyle = 'rgba(255,206,84,0.4)';
+        ctx.fillRect(g.x, g.y, g.w, g.h);
+      }
+    }
     ctx.restore();
 
     drawOpenWorldHud(r, this.player, this.miasma, this.#progress(), t, {

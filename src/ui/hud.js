@@ -1,4 +1,5 @@
 import { STATS, STAT_MAX, GAME } from '../config.js';
+import { getSceneImage } from '../openWorld.js';
 
 function drawBar(r, x, y, w, h, ratio, color, glow) {
   const ctx = r.ctx;
@@ -188,6 +189,7 @@ export function drawOpenWorldHud(r, player, miasma, progress, t, info) {
 }
 
 function drawWorldMiniMap(r, player, info, t) {
+  const ctx = r.ctx;
   const scene = info.scene;
   const camera = info.camera;
   const panelX = 12;
@@ -206,7 +208,17 @@ function drawWorldMiniMap(r, player, info, t) {
   const mapY = panelY + 24;
   const mapW = 176;
   const mapH = 99;
-  r.rect(mapX, mapY, mapW, mapH, info.floorColor || '#2d3326');
+  const sceneImg = getSceneImage(scene.key);
+  if (sceneImg) {
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(sceneImg, mapX, mapY, mapW, mapH);
+    ctx.imageSmoothingEnabled = prevSmooth;
+    ctx.fillStyle = 'rgba(10,8,18,0.25)';
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+  } else {
+    r.rect(mapX, mapY, mapW, mapH, info.floorColor || '#2d3326');
+  }
   const sx = mapW / scene.w;
   const sy = mapH / scene.h;
 
@@ -223,7 +235,6 @@ function drawWorldMiniMap(r, player, info, t) {
   for (const h of info.hazards) r.rect(mapX + h.x * sx - 1, mapY + h.y * sy - 1, 3, 3, h.def.color);
 
   // 相机视口框
-  const ctx = r.ctx;
   ctx.strokeStyle = 'rgba(255,255,255,0.85)';
   ctx.lineWidth = 1;
   ctx.strokeRect(mapX + camera.x * sx, mapY + camera.y * sy, GAME.width * sx, GAME.height * sy);

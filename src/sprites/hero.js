@@ -7,6 +7,13 @@ import { BAJIE } from './bajie.js';
 
 export { WUKONG, TANGSENG, SHASENG, BAJIE };
 
+export const PARTY = [
+  { key: 'tangseng', label: '唐僧', character: TANGSENG, color: '#f0d37a' },
+  { key: 'wukong', label: '悟空', character: WUKONG, color: '#e8a33f' },
+  { key: 'bajie', label: '八戒', character: BAJIE, color: '#d58a54' },
+  { key: 'shaseng', label: '沙僧', character: SHASENG, color: '#6fb0c8' },
+];
+
 export const HERO_SCALE = 2;          // 每个精灵像素 = 2 屏幕像素
 export const HERO_GROUND_OFFSET = 16; // 脚底相对玩家 y 的下移量（与碰撞/影子对齐）
 

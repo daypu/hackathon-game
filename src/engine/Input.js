@@ -12,6 +12,8 @@ const KEY_MAP = {
   KeyD: 'right',
   Space: 'confirm',
   Enter: 'confirm',
+  KeyJ: 'attack',
+  KeyK: 'skill',
   KeyP: 'pause',
   Escape: 'pause',
   KeyM: 'mute',

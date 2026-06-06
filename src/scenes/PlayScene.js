@@ -47,6 +47,7 @@ export class PlayScene {
     this.transitionLock = 0.4;
     this.armedExits = new Set(); // 需先离开传送门再走入才触发，避免出生即被弹走
     this.debugColliders = typeof location !== 'undefined' && location.search.includes('colliders');
+    this.debugOverview = typeof location !== 'undefined' && location.search.includes('overview');
     this.discovered = new Set([this.sceneKey]);
     this.currentZone = getZoneAt(this.player.x, this.player.y, this.sceneKey);
     this.message = '大地图探索已开启：自由走动，相机会跟随，走到边缘传送点切换场景。';
@@ -297,6 +298,11 @@ export class PlayScene {
     const ctx = r.ctx;
     const t = this.g.t;
 
+    if (this.debugOverview) {
+      this.#drawOverview(r, ctx, t);
+      return;
+    }
+
     ctx.save();
     if (this.shake > 0) {
       const s = this.shake * 10;
@@ -347,6 +353,56 @@ export class PlayScene {
 
     if (this.state === 'ending' && !this.reached) this.#vignette(r, 'rgba(80,0,0,0.45)');
     if (this.state === 'paused') this.#drawPause(r);
+  }
+
+  #drawOverview(r, ctx, t) {
+    const scene = this.currentScene;
+    r.clear('#000');
+    ctx.save();
+    ctx.scale(GAME.width / scene.w, GAME.height / scene.h);
+    drawOpenWorld(r, scene, t);
+
+    ctx.lineWidth = 6;
+    for (const c of scene.colliders || []) {
+      ctx.fillStyle = 'rgba(255,0,255,0.3)';
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+      ctx.strokeStyle = '#ff2fff';
+      ctx.strokeRect(c.x, c.y, c.w, c.h);
+    }
+    for (const ex of scene.exits) {
+      ctx.fillStyle = 'rgba(0,220,255,0.35)';
+      ctx.fillRect(ex.x, ex.y, ex.w, ex.h);
+      ctx.strokeStyle = '#00e0ff';
+      ctx.strokeRect(ex.x, ex.y, ex.w, ex.h);
+    }
+    if (scene.goal) {
+      ctx.fillStyle = 'rgba(255,206,84,0.5)';
+      ctx.fillRect(scene.goal.x, scene.goal.y, scene.goal.w, scene.goal.h);
+    }
+    for (const h of this.hazards) {
+      ctx.fillStyle = 'rgba(255,60,60,0.95)';
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, 16, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const p of this.pickups) {
+      ctx.fillStyle = 'rgba(120,255,120,0.95)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(scene.spawn.x, scene.spawn.y, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    r.text(
+      `${scene.label} 全景 · 洋红=障碍 青=传送门 金=结算 红=妖障 绿=法宝 白=出生`,
+      GAME.width / 2,
+      18,
+      { size: 12, color: '#fff', align: 'center', weight: '700', shadow: 'rgba(0,0,0,0.85)' }
+    );
   }
 
   #progress() {

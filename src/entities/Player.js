@@ -1,9 +1,6 @@
 import { GAME, STAT_MAX } from '../config.js';
-import { SPR, PARTY_ORDER } from '../sprites.js';
-import { clamp, approach } from '../engine/utils.js';
-
-const SP = 6; // 队列成员之间的历史帧间隔
-const PX = GAME.px;
+import { heroFrame, drawHero, HERO_SCALE, HERO_GROUND_OFFSET } from '../sprites/hero.js';
+import { clamp } from '../engine/utils.js';
 
 export class Player {
   constructor() {
@@ -23,47 +20,14 @@ export class Player {
     this.flash = 0;
     this.shieldFx = 0;
     this.grace = 1.2; // 开场护佑：短暂无敌，避免一进场即受击
-    this.history = [];
-    for (let i = 0; i < PARTY_ORDER.length * SP + 4; i++) {
-      this.history.push({ x: this.x, y: this.y });
-    }
+    this.animTime = 0; // 奔跑动画相位
+    this.moving = false;
+    this.facing = 1; // 1 朝右，-1 朝左
   }
 
   setPosition(x, y) {
     this.x = x;
     this.y = y;
-    for (let i = 0; i < this.history.length; i++) {
-      this.history[i] = { x, y };
-    }
-  }
-
-  update(dt, input) {
-    let speed = this.baseSpeed;
-    if (this.webTimer > 0) speed *= 0.42; // 被蛛网粘住，行动迟缓
-    if (this.cloudTimer > 0) speed *= 1.4; // 筋斗云加速
-
-    this.vy = input.axisY() * speed;
-    this.y = clamp(this.y + this.vy * dt, GAME.roadTop, GAME.roadBottom);
-
-    const hx = input.axisX();
-    if (hx !== 0) {
-      this.x += hx * speed * 0.7 * dt;
-    } else {
-      // 无输入时缓缓回到基准水平位置
-      this.x = approach(this.x, GAME.playerX, 70 * dt);
-    }
-    this.x = clamp(this.x, 120, 440);
-
-    this.cloudTimer = Math.max(0, this.cloudTimer - dt);
-    this.webTimer = Math.max(0, this.webTimer - dt);
-    this.invuln = Math.max(0, this.invuln - dt);
-    this.flash = Math.max(0, this.flash - dt);
-    this.shieldFx = Math.max(0, this.shieldFx - dt);
-    this.grace = Math.max(0, this.grace - dt);
-
-    this.history.unshift({ x: this.x, y: this.y });
-    const maxLen = PARTY_ORDER.length * SP + 4;
-    if (this.history.length > maxLen) this.history.length = maxLen;
   }
 
   updateFree(dt, input, bounds, colliders = []) {
@@ -84,16 +48,19 @@ export class Player {
     if (!this.#blocked(this.x, ny, colliders)) this.y = ny;
     this.vy = vy;
 
+    this.moving = ax !== 0 || ay !== 0;
+    if (this.moving) {
+      this.animTime += dt;
+      if (ax > 0.1) this.facing = 1;
+      else if (ax < -0.1) this.facing = -1;
+    }
+
     this.cloudTimer = Math.max(0, this.cloudTimer - dt);
     this.webTimer = Math.max(0, this.webTimer - dt);
     this.invuln = Math.max(0, this.invuln - dt);
     this.flash = Math.max(0, this.flash - dt);
     this.shieldFx = Math.max(0, this.shieldFx - dt);
     this.grace = Math.max(0, this.grace - dt);
-
-    this.history.unshift({ x: this.x, y: this.y });
-    const maxLen = PARTY_ORDER.length * SP + 4;
-    if (this.history.length > maxLen) this.history.length = maxLen;
   }
 
   // 脚部碰撞盒是否与任一实体矩形重叠
@@ -180,20 +147,13 @@ export class Player {
 
   draw(r, t) {
     const ctx = r.ctx;
-    // 受击时整队闪烁
+    // 受击时闪烁
     let alpha = 1;
     if (this.invuln > 0 && this.cloudTimer <= 0) {
       alpha = Math.sin(t * 40) > 0 ? 0.35 : 1;
     }
 
-    // 从队尾向队首绘制（队首在最上层）
-    for (let i = PARTY_ORDER.length - 1; i >= 0; i--) {
-      const key = PARTY_ORDER[i];
-      const idx = Math.min(i * SP, this.history.length - 1);
-      const h = this.history[idx] || { x: this.x, y: this.y };
-      // 横向排成取经队列，纵向用延迟轨迹形成蜿蜒跟随
-      this.#drawMember(r, key, this.x - i * 30, h.y, t, i, alpha);
-    }
+    this.#drawWukong(r, t, alpha);
 
     // 护盾光环
     if (this.shield || this.shieldFx > 0) {
@@ -212,20 +172,20 @@ export class Player {
     }
   }
 
-  #drawMember(r, key, cx, cy, t, i, alpha) {
+  // 单独绘制月色像素孙悟空（奔跑/站立帧动画 + 描边 + 阴影 + 筋斗云）
+  #drawWukong(r, t, alpha) {
     const ctx = r.ctx;
-    const sp = SPR[key];
-    const w = r.spriteWidth(sp, PX);
-    const hgt = r.spriteHeight(sp, PX);
-    const bob = Math.sin(t * 7 + i * 1.3) * 2; // 行走起伏
+    const clock = this.moving ? this.animTime : t;
+    const sp = heroFrame(this.moving, clock);
     const lift = this.cloudTimer > 0 ? -6 : 0;
+    const footY = this.y + HERO_GROUND_OFFSET;
 
     // 地面阴影
     ctx.save();
-    ctx.globalAlpha = 0.28 * alpha;
+    ctx.globalAlpha = 0.3 * alpha;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 17, 14, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(this.x, footY + 1, 15, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -235,23 +195,19 @@ export class Player {
       ctx.globalAlpha = 0.9 * alpha;
       ctx.fillStyle = '#eaf4ff';
       ctx.beginPath();
-      ctx.ellipse(cx, cy + 16, 17, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(this.x, footY, 18, 7, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#cfe4ff';
       ctx.beginPath();
-      ctx.ellipse(cx - 6, cy + 18, 6, 4, 0, 0, Math.PI * 2);
-      ctx.ellipse(cx + 7, cy + 18, 7, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(this.x - 7, footY + 2, 6, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(this.x + 8, footY + 2, 7, 4, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
 
-    // Outline
-    r.sprite(sp, cx - w / 2 - PX, cy - hgt / 2 + bob + lift, PX, { alpha, colorOverride: '#111' });
-    r.sprite(sp, cx - w / 2 + PX, cy - hgt / 2 + bob + lift, PX, { alpha, colorOverride: '#111' });
-    r.sprite(sp, cx - w / 2, cy - hgt / 2 + bob + lift - PX, PX, { alpha, colorOverride: '#111' });
-    r.sprite(sp, cx - w / 2, cy - hgt / 2 + bob + lift + PX, PX, { alpha, colorOverride: '#111' });
-    
-    // Main sprite
-    r.sprite(sp, cx - w / 2, cy - hgt / 2 + bob + lift, PX, { alpha });
+    drawHero(r, sp, this.x, footY + lift, HERO_SCALE, {
+      alpha,
+      flip: this.facing < 0,
+    });
   }
 }

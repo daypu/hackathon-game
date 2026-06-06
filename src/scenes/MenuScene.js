@@ -1,11 +1,10 @@
 import { GAME, PICKUPS } from '../config.js';
-import { SPR, PARTY_ORDER } from '../sprites.js';
+import { heroFrame, drawHero } from '../sprites/hero.js';
 import { World } from '../world.js';
 import { Pickup } from '../entities/Pickup.js';
 import { PlayScene } from './PlayScene.js';
 import { choice } from '../engine/utils.js';
 
-const PX = GAME.px;
 const PICK_KEYS = Object.keys(PICKUPS);
 
 export class MenuScene {
@@ -49,22 +48,17 @@ export class MenuScene {
     this.world.draw(r, 0.35, t, 0);
     for (const p of this.ambient) p.draw(r);
 
-    // 取经队伍站位
-    PARTY_ORDER.forEach((key, i) => {
-      const sp = SPR[key];
-      const w = r.spriteWidth(sp, PX);
-      const hgt = r.spriteHeight(sp, PX);
-      const x = 150 + i * 46;
-      const y = GAME.roadBottom - 70 + Math.sin(t * 4 + i) * 2;
-      ctx.save();
-      ctx.globalAlpha = 0.3;
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.ellipse(x, y + hgt / 2 + 2, 18, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      r.sprite(sp, x - w / 2, y - hgt / 2, PX);
-    });
+    // 孙悟空（月色像素）在营地前奔跑
+    const hx = 172;
+    const hy = GAME.roadBottom - 38; // 脚底所在 Y
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(hx, hy + 1, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    drawHero(r, heroFrame(true, t), hx, hy);
 
     // 标题遮罩
     ctx.fillStyle = 'rgba(8,6,16,0.45)';

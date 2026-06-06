@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>西游取经 · 万象迷途</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #1a0f08;
+            overflow: hidden;
+            font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        #game-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            box-shadow: 0 0 40px rgba(255, 102, 0, 0.3);
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <!-- Phaser 引擎（本地副本，离线可玩） -->
+    <script src="lib/phaser.min.js"></script>
+
+    <!-- 游戏代码（按依赖顺序：lib → config → util → manager → sprite → scene → main） -->
+    <script src="src/utils/DevLog.js"></script>
+    <script src="src/config.js"></script>
+    <script src="src/utils/GestureRecognizer.js"></script>
+    <script src="src/sprites/Player.js"></script>
+    <script src="src/sprites/Wukong.js"></script>
+    <script src="src/sprites/Bajie.js"></script>
+    <script src="src/sprites/Obstacle.js"></script>
+    <script src="src/sprites/Tieshan.js"></script>
+    <script src="src/sprites/Fireball.js"></script>
+    <script src="src/managers/ObstacleManager.js"></script>
+    <script src="src/scenes/BootScene.js"></script>
+    <script src="src/scenes/GameScene.js"></script>
+    <script src="src/scenes/BossScene.js"></script>
+    <script src="src/scenes/ResultScene.js"></script>
+    <script src="src/main.js"></script>
+</body>
+</html>

@@ -38,7 +38,7 @@ export class StartScene {
       weight: '900',
     });
 
-    const lines = ['A/D：交替划船（核心）', 'Space：连点舀水', '1/2：顺序安抚', 'Q/E：击退妖怪'];
+    const lines = ['A/D：交替划船（核心）', 'Space：连点舀水', '1/2：顺序安抚', 'Q/E：击退前方妖怪'];
     lines.forEach((ln, i) => {
       r.text(ln, GAME.width / 2, 278 + i * 26, {
         size: 16,

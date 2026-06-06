@@ -39,9 +39,9 @@ export const TUNING = {
   },
 
   monster: {
-    startDistance: 70,
-    chaseBase: 5.8,
-    chaseRamp: 3.8,
+    startDistance: 82,
+    chaseBase: 4.4,
+    chaseRamp: 2.4,
     fearNearStart: 26,
     fearNearPerSec: 3.2,
   },
@@ -52,7 +52,7 @@ export const TUNING = {
   },
 
   rowing: {
-    basePush: 12.5,
+    basePush: 11.8,
     sameKeyFactor: 0.35,
     comboMax: 8,
     comboBonus: 0.08,
@@ -61,6 +61,7 @@ export const TUNING = {
   water: {
     max: 100,
     bailAmount: 8.6,
+    bailCooldownSeconds: 0.2,
     waveAdd: 18,
   },
 
@@ -89,7 +90,12 @@ export const TUNING = {
 
   demon: {
     cooldownSeconds: 6,
-    activeSeconds: 1.4,
+    baseSeconds: 0.6,
+    stepSeconds: 0.9,
+    wrongFearAdd: 10,
+    timeoutFearAdd: 15,
+    speedDebuffSeconds: 2.2,
+    speedDebuffFactor: 0.6,
   },
 
   score: {

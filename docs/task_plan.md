@@ -346,3 +346,37 @@ work/
 | 手机横屏画面底部被截掉 | 1 | `height:100vh` 在 iOS Safari 上算的是地址栏完全隐藏时的高度。改 `position:fixed + height:100%` + viewport-fit=cover 撑满可视区 |
 | Boss 战失败后不能再进 Boss 战（kafka 反馈）| 1 | `GameScene.enterBossFight` 的防重入锁 `this.bossEntering=true` 在 create() 没有显式重置。Phaser scene 是**实例复用**的，restart 只调 create()，不 new。第一次设的 true 永久残留 → 下一局永远过不去。修：`create()` 加 `this.bossEntering = false;` |
 | 角色脚陷地（4 次方案失败）| 4+ | 试了 body 高、setOrigin、PIL 裁切 PNG padding 全部没用。**根因仍未确认**。已开 DEBUG_PHYSICS 等 kafka 强刷看绿框位置才能继续。教训：3 次失败应立即上 debug 工具，不再猜测调参 |
+
+### 阶段12：全部贴图像素化 + 陷地根本问题解决 [complete] ✅
+**触发**：kafka 把铁扇公主、飞行妖怪、陆地妖怪贴图放到 assets 下
+**问题链**：
+1. kafka "替换这些贴图，同样得去白底"
+2. kafka "铁扇公主跑酷阶段也要换 + Boss战扇子/矩形删掉"
+3. kafka "Boss战小妖怪也要换贴图"
+4. **kafka 一句话点醒根本问题**："为什么陆地妖怪贴地但悟空八戒陷地？"
+
+**根因定位（kafka 对比发现）**：
+- 陆地妖怪传 `y = groundY` + setOrigin(0.5, 1.0) → 底部在地面 ✅
+- 悟空八戒传 `y = groundY - size`（中心点位置）+ setOrigin(0.5, 1.0) → 底部在地面下方 ❌
+- **锚点改了，但 y 坐标含义没统一**
+
+**输出**：
+- [x] PIL 色度抠图：把白色/浅灰背景（RGB > 200 且色差 < 30）变透明 ✅
+  - tieshangongzhu.png: 85,528 像素变透明 → 377×375
+  - feixingyaoguai.png: 109,653 像素变透明 → 522×321
+  - ludiyaoguai.png: 82,609 像素变透明 → 379×363
+- [x] BootScene.js: 加载铁扇公主/飞行妖怪/陆地妖怪 3 张新图 ✅
+- [x] Tieshan.js: 铁扇公主 Boss → 纯像素图（删扇子 fanG + 袖口 sleeveL/R + drawFan()）✅
+- [x] GameScene.js spawnBoss: 跑酷阶段铁扇公主 → 像素图（删 bossHead，只保留主图）✅
+- [x] Obstacle.js createMonster: 小妖怪 → 随机陆地/飞行像素图（删 belly/eye/tusk 装饰）✅
+- [x] BossMonster.js draw: Boss战小妖怪 → 随机陆地/飞行像素图 ✅
+- [x] **GameScene.js:93,97**: 悟空/八戒 y 坐标统一改 `groundY`（配合 setOrigin(0.5, 1.0) 底部贴地）✅
+- [x] GameScene.js createRoleCards: 角色按钮 y 从 `HEIGHT-45` 上移到 `60`（分数下方）✅
+
+**关键技术**：
+- 色度抠图：`r>200 and g>200 and b>200 and max(r,g,b)-min(r,g,b)<30` → alpha=0
+- Phaser 锚点与坐标的关系：setOrigin(0.5, 1.0) 意味着 (x,y) 是图片底部中心点
+
+**实际耗时**：约 30 分钟
+
+**阶段11.5 结案**：陷地问题根因是 y 坐标语义不统一（4 次失败都在调图片/body，没看坐标传参）

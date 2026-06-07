@@ -32,21 +32,14 @@ class BossMonster {
     }
 
     draw(x, y) {
-        const w = 38, h = 36;
-        this.body = this.scene.add.rectangle(x, y, w, h, GAME_CONFIG.COLOR_MONSTER_BODY).setDepth(400);
+        const size = 40;
+        // 随机选择陆地或飞行妖怪（Boss战里不区分，都在空中乱飞）
+        const imageName = Math.random() < 0.5 ? 'ludiyaoguai' : 'feixingyaoguai';
+        this.body = this.scene.add.image(x, y, imageName).setDepth(400);
+        this.body.setDisplaySize(size, size);
+        this.body.setOrigin(0.5, 0.5);  // 中心锚点（Boss战里妖怪在空中飞，不需要底部对齐）
 
-        const belly = this.scene.add.ellipse(x, y + 4, w * 0.55, h * 0.45, GAME_CONFIG.COLOR_MONSTER_BELLY).setDepth(401);
-        const leftEye = this.scene.add.circle(x - 8, y - 6, 4, GAME_CONFIG.COLOR_MONSTER_EYE).setDepth(402);
-        const rightEye = this.scene.add.circle(x + 8, y - 6, 4, GAME_CONFIG.COLOR_MONSTER_EYE).setDepth(402);
-        const leftPupil = this.scene.add.circle(x - 8, y - 6, 1.5, 0x000000).setDepth(403);
-        const rightPupil = this.scene.add.circle(x + 8, y - 6, 1.5, 0x000000).setDepth(403);
-
-        const tusks = this.scene.add.graphics().setDepth(402);
-        tusks.fillStyle(GAME_CONFIG.COLOR_MONSTER_TUSK, 1);
-        tusks.fillTriangle(x - 6, y + 4, x - 3, y + 4, x - 4.5, y + 11);
-        tusks.fillTriangle(x + 3, y + 4, x + 6, y + 4, x + 4.5, y + 11);
-
-        this.decorations.push(this.body, belly, leftEye, rightEye, leftPupil, rightPupil, tusks);
+        this.decorations.push(this.body);
     }
 
     update(delta) {

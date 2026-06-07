@@ -89,12 +89,12 @@ class GameScene extends Phaser.Scene {
         const groundY = GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_HEIGHT;
         const x = GAME_CONFIG.PLAYER_START_X;
 
-        // 悟空（初始显示）
-        this.wukong = new Wukong(this, x, groundY - GAME_CONFIG.PLAYER_SIZE);
+        // 悟空（初始显示）- y = groundY 让底部贴地（配合 setOrigin 0.5, 1.0）
+        this.wukong = new Wukong(this, x, groundY);
         this.wukong.createVisual();
 
         // 八戒（初始隐藏，放在屏幕外）
-        this.bajie = new Bajie(this, x, groundY - GAME_CONFIG.PLAYER_BAJIE_SIZE);
+        this.bajie = new Bajie(this, x, groundY);
         this.bajie.createVisual();
         this.setPlayerVisible(this.bajie, false);
 
@@ -192,7 +192,7 @@ class GameScene extends Phaser.Scene {
     }
 
     createRoleCards() {
-        const y = GAME_CONFIG.HEIGHT - 45;  // 贴底（原来 -80）
+        const y = 80;  // 上移到分数下面
 
         // 悟空卡片（可点击切换）
         this.wukongCard = this.add.rectangle(80, y, 110, 40, GAME_CONFIG.COLOR_WUKONG)

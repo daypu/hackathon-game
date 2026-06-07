@@ -1,9 +1,9 @@
 import { GAME, PICKUPS } from '../config.js';
 import { TANGSENG, WUKONG, BAJIE, SHASENG, characterFrame, drawCharacter } from '../sprites/hero.js';
-import { World } from '../world.js';
 import { Pickup } from '../entities/Pickup.js';
 import { PlayScene } from './PlayScene.js';
 import { choice } from '../engine/utils.js';
+import menuBgUrl from '../../arts/bg_liusha_river_main.png';
 
 const PICK_KEYS = Object.keys(PICKUPS);
 
@@ -19,7 +19,8 @@ export class MenuScene {
       this.g.setScene(new PlayScene(this.g));
       return;
     }
-    this.world = new World();
+    this.menuBg = new Image();
+    this.menuBg.src = menuBgUrl;
     this.ambient = [];
     for (let i = 0; i < 4; i++) {
       const p = new Pickup(choice(PICK_KEYS), 200 + Math.random() * 280);
@@ -29,7 +30,6 @@ export class MenuScene {
   }
 
   update(dt) {
-    this.world.update(dt, 120);
     for (const p of this.ambient) {
       p.update(dt, 120);
       if (p.dead) {
@@ -50,7 +50,10 @@ export class MenuScene {
     const ctx = r.ctx;
     const t = this.g.t;
 
-    this.world.draw(r, 0.35, t, 0);
+    if (this.menuBg?.complete) drawImageCover(ctx, this.menuBg, 0, 0, GAME.width, GAME.height);
+    else r.vgrad(0, 0, GAME.width, GAME.height, '#08142c', '#163d77');
+    ctx.fillStyle = 'rgba(4,10,24,0.26)';
+    ctx.fillRect(0, 0, GAME.width, GAME.height);
     for (const p of this.ambient) p.draw(r);
 
     // 四人动态队伍预览：游戏内仍先以悟空为主控，其他角色先作为动画素材接入。
@@ -83,21 +86,21 @@ export class MenuScene {
     ctx.fillStyle = 'rgba(8,6,16,0.45)';
     ctx.fillRect(0, 70, GAME.width, 230);
 
-    r.text('西游 · 群魔幻境', GAME.width / 2, 120, {
+    r.text('西游冒险主题动作游戏', GAME.width / 2, 120, {
       size: 22,
       color: '#cdbfe8',
       align: 'center',
       weight: '700',
       shadow: 'rgba(0,0,0,0.6)',
     });
-    r.text('万 象 迷 途', GAME.width / 2, 188, {
+    r.text('西 天 之 旅', GAME.width / 2, 188, {
       size: 72,
       color: '#ffce54',
       align: 'center',
       weight: '900',
       shadow: 'rgba(120,40,10,0.8)',
     });
-    r.text('—— 取经者的试炼 ——', GAME.width / 2, 226, {
+    r.text('—— 师徒四人的西行冒险 ——', GAME.width / 2, 226, {
       size: 18,
       color: '#e8d9a8',
       align: 'center',
@@ -105,9 +108,9 @@ export class MenuScene {
     });
 
     const lines = [
-      '妖气幻化迷途，唐僧师徒误入万象之境。',
-      '躲避妖风、落石、火焰、蛛网与陷阱，收集佛光、经文、仙桃、筋斗云与护身符。',
-      '守住法力、信念与经书完整度，护送师徒抵达灵山。',
+      '妖气遮天，唐僧师徒踏上通往西天的艰险旅程。',
+      '穿越高老庄、流沙河、火焰山等关卡，破解妖魔阻拦与机关试炼。',
+      '守住法力、信念与经书完整度，护送师徒一路西行抵达灵山。',
     ];
     lines.forEach((ln, i) => {
       r.text(ln, GAME.width / 2, 262 + i * 20, {
@@ -127,7 +130,7 @@ export class MenuScene {
 
     // 闪烁开始提示
     const blink = 0.5 + 0.5 * Math.sin(t * 4);
-    r.text('按 空格 / 点击屏幕  开始取经', GAME.width / 2, GAME.height - 28, {
+    r.text('按 空格 / 点击屏幕  开始西天之旅', GAME.width / 2, GAME.height - 28, {
       size: 20,
       color: '#fff2b0',
       align: 'center',
@@ -136,4 +139,15 @@ export class MenuScene {
       shadow: 'rgba(0,0,0,0.6)',
     });
   }
+}
+
+function drawImageCover(ctx, img, x, y, w, h) {
+  const iw = img.width || 1;
+  const ih = img.height || 1;
+  const scale = Math.max(w / iw, h / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
 }

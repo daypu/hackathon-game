@@ -40,6 +40,7 @@ export class Game {
       this.scene.update(dt);
       this.scene.draw();
     }
+    this.input.drawOverlay?.(this.r, this.scene);
     this.input.postUpdate();
     requestAnimationFrame(this._loop);
   }

@@ -5,6 +5,8 @@
 class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
+        this.touchMode = false;
+        this.touchPad = null;
     }
 
     create() {
@@ -37,6 +39,7 @@ class GameScene extends Phaser.Scene {
 
         // === 7. 输入 ===
         this.setupInput();
+        this.createTouchControls();
 
         // === 8. UI ===
         this.createUI();
@@ -113,6 +116,7 @@ class GameScene extends Phaser.Scene {
     // ===== 输入 =====
 
     setupInput() {
+        this.input.addPointer(3);
         this.cursors = this.input.keyboard.createCursorKeys();
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
@@ -126,6 +130,83 @@ class GameScene extends Phaser.Scene {
                 this.activePlayer.jump();
             }
         });
+    }
+
+    createTouchControls() {
+        this.touchMode = (navigator.maxTouchPoints || 0) > 0
+            || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        if (!this.touchMode) return;
+
+        const x = 108;
+        const y = GAME_CONFIG.HEIGHT - 102;
+        const r = 56;
+        this.touchPad = {
+            x, y, r,
+            pointerId: null,
+            dir: null,
+        };
+
+        this.padBase = this.add.circle(x, y, r + 8, 0x08060c, 0.38).setScrollFactor(0).setDepth(950);
+        this.padRing = this.add.circle(x, y, r, 0x000000, 0).setStrokeStyle(3, 0xFFFFFF, 0.18).setScrollFactor(0).setDepth(951);
+        this.padKnob = this.add.circle(x, y, 24, 0xCFC6E8, 0.82).setScrollFactor(0).setDepth(952);
+        this.add.text(x, y - r - 18, '跳', { fontSize: '18px', color: '#fff2b0', fontStyle: 'bold' })
+            .setOrigin(0.5).setScrollFactor(0).setDepth(953);
+        this.add.text(x - r - 22, y + 4, '悟空', { fontSize: '14px', color: '#fff2b0', fontStyle: 'bold' })
+            .setOrigin(0.5).setScrollFactor(0).setDepth(953);
+        this.add.text(x + r + 22, y + 4, '八戒', { fontSize: '14px', color: '#fff2b0', fontStyle: 'bold' })
+            .setOrigin(0.5).setScrollFactor(0).setDepth(953);
+
+        const zone = this.add.circle(x, y, r + 26, 0x000000, 0.001)
+            .setScrollFactor(0)
+            .setDepth(949)
+            .setInteractive({ useHandCursor: false });
+        zone.on('pointerdown', (pointer, lx, ly, event) => {
+            event.stopPropagation();
+            this.touchPad.pointerId = pointer.id;
+            this.touchPad.dir = null;
+            this.updateTouchPad(pointer.x, pointer.y);
+        });
+
+        this.input.on('pointermove', (pointer) => {
+            if (!this.touchPad || pointer.id !== this.touchPad.pointerId) return;
+            this.updateTouchPad(pointer.x, pointer.y);
+        });
+        this.input.on('pointerup', (pointer) => {
+            if (!this.touchPad || pointer.id !== this.touchPad.pointerId) return;
+            this.resetTouchPad();
+        });
+    }
+
+    updateTouchPad(px, py) {
+        const pad = this.touchPad;
+        const dx = px - pad.x;
+        const dy = py - pad.y;
+        const len = Math.hypot(dx, dy);
+        const max = pad.r;
+        const k = len > max ? max / len : 1;
+        this.padKnob.setPosition(pad.x + dx * k, pad.y + dy * k);
+
+        if (len < pad.r * 0.24) {
+            pad.dir = null;
+            return;
+        }
+
+        let dir = null;
+        if (Math.abs(dy) > Math.abs(dx) && dy < 0) dir = 'up';
+        else if (Math.abs(dx) >= Math.abs(dy)) dir = dx < 0 ? 'left' : 'right';
+        if (!dir || dir === pad.dir) return;
+        pad.dir = dir;
+
+        if (dir === 'up' && !this.isGameOver) this.activePlayer.jump();
+        if (dir === 'left') this.switchTo('wukong');
+        if (dir === 'right') this.switchTo('bajie');
+    }
+
+    resetTouchPad() {
+        if (!this.touchPad) return;
+        this.touchPad.pointerId = null;
+        this.touchPad.dir = null;
+        this.padKnob.setPosition(this.touchPad.x, this.touchPad.y);
     }
 
     switchTo(role) {
@@ -186,7 +267,7 @@ class GameScene extends Phaser.Scene {
         // 顶部操作提示（让位给卡片）
         this.add.text(
             GAME_CONFIG.WIDTH / 2, 50,
-            '空格=跳跃 │ 1=悟空 2=八戒 │ 火墙切悟空 巨石切八戒 妖怪必跳',
+            '空格/摇杆上=跳跃 │ 1/左拨=悟空 2/右拨=八戒 │ 火墙切悟空 巨石切八戒 妖怪必跳',
             { fontSize: '16px', color: '#FFFFFF', fontStyle: 'bold' }
         ).setOrigin(0.5);
     }

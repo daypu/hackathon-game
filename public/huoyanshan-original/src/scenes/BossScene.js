@@ -17,6 +17,7 @@
 class BossScene extends Phaser.Scene {
     constructor() {
         super({ key: 'BossScene' });
+        this.touchMode = false;
     }
 
     init(data) {
@@ -57,6 +58,7 @@ class BossScene extends Phaser.Scene {
 
         // === 输入 ===
         this.setupInput();
+        this.createTouchControls();
 
         // === 手势识别 ===
         this.gesture = new GestureRecognizer(this);
@@ -73,9 +75,39 @@ class BossScene extends Phaser.Scene {
     }
 
     setupInput() {
+        this.input.addPointer(3);
         this.key1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
         this.key2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
         this.keyJ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J);
+    }
+
+    createTouchControls() {
+        this.touchMode = (navigator.maxTouchPoints || 0) > 0
+            || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        if (!this.touchMode) return;
+
+        const skillX = 92;
+        const skillY = GAME_CONFIG.HEIGHT - 74;
+        this.touchSkillButton = this.add.circle(skillX, skillY, 34, 0x08060c, 0.82)
+            .setStrokeStyle(3, 0xFFD700, 0.95)
+            .setScrollFactor(0)
+            .setDepth(980)
+            .setInteractive({ useHandCursor: false });
+        this.add.text(skillX, skillY - 4, '技能', {
+            fontSize: '18px', color: '#FFF2B0', fontStyle: 'bold',
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(981);
+        this.add.text(skillX, skillY + 24, '画弧照常触控', {
+            fontSize: '11px', color: '#CFC6E8', fontStyle: 'bold',
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(981);
+        this.touchSkillButton.on('pointerdown', (pointer, lx, ly, event) => {
+            event.stopPropagation();
+            this.onSkillPressed();
+            this.tweens.add({
+                targets: this.touchSkillButton,
+                scale: { from: 0.92, to: 1 },
+                duration: 120,
+            });
+        });
     }
 
     showEntryBanner() {
@@ -88,7 +120,7 @@ class BossScene extends Phaser.Scene {
         }).setOrigin(0.5);
         const sub = this.add.text(
             GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT / 2 + 25,
-            '鼠标画弧=攻击 │ 1悟空 2八戒 │ J放技能（清妖/护盾）', {
+            '鼠标/触屏画弧=攻击 │ 点卡片切悟空/八戒 │ 技能按钮或 J 放技能', {
             fontSize: '17px', color: '#FFCC88'
         }).setOrigin(0.5);
         this.time.delayedCall(2200, () => {
@@ -174,7 +206,7 @@ class BossScene extends Phaser.Scene {
         // 操作提示
         this.add.text(
             GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT - 18,
-            '画弧=攻击Boss/扫妖 │ 1悟空 2八戒切角色 │ J=技能 │ R=重打',
+            '画弧=攻击Boss/扫妖 │ 点卡片切角色 │ 技能按钮/J=技能 │ R=重打',
             { fontSize: '15px', color: '#FFFFFF', fontStyle: 'bold' }
         ).setOrigin(0.5);
     }

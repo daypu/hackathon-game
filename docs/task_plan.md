@@ -380,3 +380,59 @@ work/
 **实际耗时**：约 30 分钟
 
 **阶段11.5 结案**：陷地问题根因是 y 坐标语义不统一（4 次失败都在调图片/body，没看坐标传参）
+
+### 阶段13：陷地终极修复 + 角色切换 bug 修复 [complete] ✅
+**触发**：kafka 反馈"悟空八戒脚还是没和陆地妖怪同水平线" + "切回悟空会掉到地面下"
+
+**问题1：陷地（持续多次失败后的彻底解决）**
+
+**调试方法转变**（kafka 提示后改用数据驱动）：
+1. 加 console.log 打印坐标：groundY=460、悟空 visual.y=460、悟空 body.y=400、八戒 body.y=392
+2. **关键发现**：visual.y 都正确（460），但 body.y 偏上 60-68px，**物理体不在视觉位置**
+3. 多次尝试调 body.setSize / setOffset 都无效
+
+**根因（kafka 一句话拍板）**："物理地面坐标改了重力会自动落到正确位置吧？"
+
+**最终方案**：调整**物理地面顶部位置**（不调角色），让重力自动处理：
+```javascript
+// 旧：物理地面中心 = groundY + GROUND_HEIGHT/2（顶部就是 groundY）
+const groundBody = this.add.rectangle(
+    WIDTH/2, groundY + GROUND_HEIGHT/2, WIDTH, GROUND_HEIGHT
+);
+
+// 新：物理地面顶部对齐 groundY - 50（让角色脚正好贴视觉地面顶）
+const groundBody = this.add.rectangle(
+    WIDTH/2, groundY - 50, WIDTH, GROUND_HEIGHT
+);
+groundBody.setOrigin(0.5, 0);  // 顶部锚点
+```
+
+**kafka 自己微调**：groundY → groundY - 50（精确对齐 ✅）
+
+**问题2：八戒→悟空切换后掉到地面下**
+
+**调试日志显示**：
+- 第1次切换（悟空→八戒）：visual.y 466（已偏移6px）
+- 第2次切换（八戒→悟空）：visual.y 473（累积偏移13px）
+
+**根因**：切换时直接复制 `visual.y`，但两角色 size 不同（60 vs 70），导致坐标语义错乱并累积偏移
+
+**修复**：切换时重置 y 坐标为 groundY，让重力自然处理落地
+```javascript
+newPlayer.x = oldPlayer.visual.x;
+newPlayer.y = groundY;          // 重置为基线
+newPlayer.visual.x = oldPlayer.visual.x;
+newPlayer.visual.y = groundY;   // 重置为基线
+newPlayer.visual.body.setVelocity(
+    oldPlayer.visual.body.velocity.x,  // 保留横向速度
+    0                                   // y方向清零
+);
+```
+
+**问题3：用户运行指南**
+kafka 问"别人电脑怎么跑" → 给出三种方式（直接打开 / dev_server / 整包发送）
+
+**实际耗时**：约 60 分钟（多次失败 + 加 debug log + kafka 拍板）
+
+**kafka 关键金句**："物理地面坐标改了重力会自动落到正确位置吧？" — 一句解开 7+ 次失败的死结
+

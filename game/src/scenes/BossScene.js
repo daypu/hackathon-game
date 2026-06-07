@@ -25,6 +25,9 @@ class BossScene extends Phaser.Scene {
     }
 
     create() {
+        // 统一文字样式（解决中文字符顶部截断 + Retina 模糊）
+        TextStyle.patch(this);
+
         console.log('[BossScene] create() called, parkourScore=', this.parkourScore, 'role=', this.fromRole);
 
         // === 状态 ===

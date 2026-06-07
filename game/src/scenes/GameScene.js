@@ -8,6 +8,9 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // 统一文字样式（解决中文字符顶部截断 + Retina 模糊）
+        TextStyle.patch(this);
+
         // === 1. 状态初始化 ===
         this.isGameOver = false;
         this.score = 0;

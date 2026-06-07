@@ -502,3 +502,142 @@ for x, y in [(0, 0), (w-1, 0), (0, h-1), (w-1, h-1)]:
 - 底部：操作提示（文字，不可点击）
 - **避免底部放可点击按钮**（拇指操作时易误触跳跃/画弧）
 
+
+---
+
+## CP9 阶段技术发现（会话 12 - 陷地终极修复 + 切换 bug）
+
+### 1. 调坐标 vs 调物理体（kafka 的关键洞察）
+
+**问题**：悟空八戒陷地，无论调 body.setSize / setOffset / setOrigin 都不对
+
+**所有失败方案**：
+- 改 body 高度：`size, size * 0.8, size * 0.85` 各种比例
+- 改 body offset：0, 12, -20 各种值
+- 改 setOrigin Y：0.92, 1.0, 0.97, 0.5 各种锚点
+
+**全部失败原因**：在调"角色侧"参数，但根本问题不在角色
+
+**kafka 一句话**："物理地面坐标改了重力会自动落到正确位置吧？"
+
+**最终方案**：调地面物理体的顶部位置
+```javascript
+// 物理地面顶部 = groundY - 50（视觉地面上方 50px）
+const groundBody = this.add.rectangle(
+    WIDTH/2, groundY - 50,  // y 坐标
+    WIDTH, GROUND_HEIGHT
+);
+groundBody.setOrigin(0.5, 0);  // 顶部锚点（不是默认的中心）
+```
+
+**为什么这能修**：
+- 角色受重力自动落下
+- 落到物理地面顶部时停止
+- 物理地面顶部对齐到视觉地面顶部
+- 自动正确，**完全不调角色侧任何参数**
+
+**金律**：
+- 多个对象有相同行为时（落到地面），**调环境而非调每个对象**
+- 环境改一次，所有对象自动受益
+- 这就是 kafka 一直说的"为什么不调地面"的核心
+
+### 2. 角色切换的坐标累积偏移陷阱
+
+**症状**：从八戒切回悟空会掉到地面下
+
+**调试数据**：
+| 切换次序 | visual.y | 偏移量 |
+|---|---|---|
+| 初始 | 460 | 基线 |
+| 第1次切换后 | 466 | +6 |
+| 第2次切换后 | 473 | +13 |
+| 持续切换 | 不断累积 | 越掉越深 |
+
+**根因**：切换时直接复制坐标
+```javascript
+// 错误：直接复制 visual.y（会累积偏移）
+newPlayer.visual.y = oldPlayer.visual.y;
+```
+
+不同 size 的角色（60 vs 70）+ 不同的物理体配置 → 复制坐标时语义错乱，每次切换都有微小偏移，累积越来越大。
+
+**修复方案**：切换时重置到已知位置
+```javascript
+const groundY = GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_HEIGHT;
+newPlayer.x = oldPlayer.visual.x;
+newPlayer.y = groundY;          // 重置！不是复制
+newPlayer.visual.x = oldPlayer.visual.x;
+newPlayer.visual.y = groundY;   // 重置！让重力处理
+
+newPlayer.visual.body.setVelocity(
+    oldPlayer.visual.body.velocity.x,  // 保留横向速度
+    0                                   // y方向清零（避免带入下落速度）
+);
+```
+
+**金律**：
+- 跨对象迁移状态时，**复制操作要小心**
+- 不同对象的坐标语义可能不同（中心 vs 底部、不同 size、不同 offset）
+- **重置到已知正确位置**比"完美复制"更可靠
+
+### 3. 数据驱动调试 vs 猜测调试
+
+**对比**：
+| 调试方式 | 本会话案例 | 结果 |
+|---|---|---|
+| 猜测式 | 改 body / setSize / setOrigin 七次 | 全失败 |
+| 数据式 | 加 console.log 打印 visual.y 和 body.y | **一眼看出问题** |
+
+**关键数据**：
+```javascript
+console.log('groundY:', groundY);                          // 460
+console.log('悟空 visual.y:', this.wukong.visual.y);       // 460 ✅
+console.log('悟空 body.y:', this.wukong.visual.body.y);    // 400 ❌ 偏上60
+console.log('地面 body.y:', groundBody.body.y);            // 460 ❌ 比期望低50
+```
+
+**金律**：
+- **遇到位置问题第一时间打印坐标**，不要靠"看视觉效果猜"
+- **打印对比组**：正常对象 + 异常对象 + 期望位置
+- **数据揭示真相，视觉容易误导**
+
+### 4. 物理地面与视觉地面的对齐
+
+**Phaser staticGroup 物理地面的两种锚点策略**：
+```javascript
+// 策略A：中心锚点（默认）
+const groundBody = scene.add.rectangle(WIDTH/2, groundY+H/2, W, H);
+// y 是中心点，物理体上下各 H/2
+
+// 策略B：顶部锚点（推荐用于地面）
+const groundBody = scene.add.rectangle(WIDTH/2, groundY, W, H);
+groundBody.setOrigin(0.5, 0);  // 顶部锚点
+// y 是顶部位置，物理体向下延伸 H
+```
+
+**为什么 B 更适合地面**：
+- 视觉地面的"顶部"就是玩家踩的地方
+- 物理体顶部=视觉地面顶部 → 玩家脚正好踩地
+- 直觉一致，不用算偏移
+
+### 5. 跨电脑运行项目的指南（kafka 询问后总结）
+
+**3 种方式给别人跑游戏**：
+1. **直接打开 HTML**：复制 `game/` 文件夹 → 双击 `index.html`
+   - 缺点：浏览器 CORS 可能阻止本地图片加载
+2. **本地服务器**（推荐）：
+   ```bash
+   cd game
+   python3 dev_server.py
+   ```
+   浏览器访问 `http://localhost:8765`
+3. **手机访问**：服务器跑起来后用同 WiFi 手机访问 `http://<Mac IP>:8765`
+
+**必带文件**：
+- `game/index.html`（入口）
+- `game/src/`（所有 JS）
+- `game/assets/images/`（所有素材）
+- `game/dev_server.py`（可选，本地服务器）
+
+**可不带**：`docs/`、`README.md`、`.git/`
+

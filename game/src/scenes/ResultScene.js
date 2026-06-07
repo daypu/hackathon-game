@@ -16,6 +16,9 @@ class ResultScene extends Phaser.Scene {
     }
 
     create() {
+        // 统一文字样式（解决中文字符顶部截断 + Retina 模糊）
+        TextStyle.patch(this);
+
         const cx = GAME_CONFIG.WIDTH / 2;
         const cy = GAME_CONFIG.HEIGHT / 2;
 
@@ -134,13 +137,15 @@ class ResultScene extends Phaser.Scene {
         const KEY = 'xiyou_highscore';
         let high = 0;
         try { high = parseInt(localStorage.getItem(KEY) || '0', 10); } catch (e) {}
+        // 放在按钮上方（按钮 y=cy+210，高 50 → 按钮顶 cy+185，文字放 cy+165 留 20px 间距）
+        const labelY = GAME_CONFIG.HEIGHT / 2 + 165;
         if (score > high) {
             try { localStorage.setItem(KEY, String(score)); } catch (e) {}
-            this.add.text(GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT - 80, `🏆 新纪录！历史最高：${score}`, {
+            this.add.text(GAME_CONFIG.WIDTH / 2, labelY, `🏆 新纪录！历史最高:${score}`, {
                 fontSize: '18px', color: '#FFD700', fontStyle: 'bold'
             }).setOrigin(0.5);
         } else if (high > 0) {
-            this.add.text(GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT - 80, `历史最高：${high}`, {
+            this.add.text(GAME_CONFIG.WIDTH / 2, labelY, `历史最高:${high}`, {
                 fontSize: '14px', color: '#888888'
             }).setOrigin(0.5);
         }

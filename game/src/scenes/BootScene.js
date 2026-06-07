@@ -8,6 +8,9 @@ class BootScene extends Phaser.Scene {
     }
 
     preload() {
+        // 统一文字样式（解决中文字符顶部截断 + Retina 模糊）
+        TextStyle.patch(this);
+
         // 加载像素素材（来自 hackathon-game 项目）
         this.load.image('wukong', 'assets/images/wukong.png');
         this.load.image('bajie', 'assets/images/bajie.png');

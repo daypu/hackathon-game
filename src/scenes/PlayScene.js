@@ -6,6 +6,7 @@ import { ParticleSystem } from '../entities/particles.js';
 import { combatButtonAt, drawHubHud, partySlotAt, shopHitAt } from '../ui/hud.js';
 import { MONSTER_SPAWNS, SKILL_COOLDOWN, skillFor } from '../combat.js';
 import { WUZI_BOSS_FRAME, WUZI_BOSS_PHASES } from '../assets/boss/index.js';
+import { GaolaozhuangMiniGame } from '../mini/GaolaozhuangMiniGame.js';
 import {
   NPCS,
   completeStoryObjective,
@@ -46,6 +47,9 @@ export class PlayScene {
     this.debugOverview = new URLSearchParams(location.search).has('overview');
     // 调试：URL 带 ?boss 时直接进入无字经魔 Boss 战
     this.debugBoss = new URLSearchParams(location.search).has('boss');
+    // 调试：URL 带 ?gaolaozhuang 或 ?mini=gaolaozhuang 时直接进入高老庄小游戏
+    const params = new URLSearchParams(location.search);
+    this.debugGaolaozhuang = params.has('gaolaozhuang') || params.get('mini') === 'gaolaozhuang';
   }
 
   enter() {
@@ -62,6 +66,7 @@ export class PlayScene {
     this.bossCleared = false;
     this.camera = makeCamera(this.player);
     this.state = 'playing'; // playing | paused
+    this.miniGame = null;
     this.activeLevel = null;
     this.nearNpc = null;
     this.dialogue = null;
@@ -79,14 +84,27 @@ export class PlayScene {
     this.g.audio.ensure();
     this.g.audio.startBgm();
     if (this.debugBoss) this.#startBossPrelude();
+    else if (this.debugGaolaozhuang) {
+      const lv = LEVELS.find((level) => level.key === 'gaolaozhuang');
+      if (lv) this.#startGaolaozhuangLevel(lv);
+    }
   }
 
   exit() {
+    if (this.miniGame) {
+      this.miniGame.destroy?.();
+      this.miniGame = null;
+    }
     this.g.audio.stopBgm();
   }
 
   update(dt) {
     const input = this.g.input;
+
+    if (this.state === 'minigame') {
+      this.miniGame?.update(dt, input);
+      return;
+    }
 
     if (this.boss) {
       this.#updateBoss(dt, input);
@@ -541,6 +559,10 @@ export class PlayScene {
       this.g.audio.sfx('select');
       return;
     }
+    if (lv.key === 'gaolaozhuang') {
+      this.#startGaolaozhuangLevel(lv);
+      return;
+    }
     const result = completeStoryObjective(this.story, lv.key);
     if (result.advanced) {
       this.toast = `已点亮：${lv.label}`;
@@ -569,6 +591,47 @@ export class PlayScene {
       life: 0.8,
       size: 6,
       up: 30,
+    });
+  }
+
+  #startGaolaozhuangLevel(lv) {
+    this.state = 'minigame';
+    this.toast = '';
+    this.toastTimer = 0;
+    this.message = '进入高老庄试炼：帮助悟空收服八戒。';
+    this.messageTimer = 4;
+    this.miniGame = new GaolaozhuangMiniGame({
+      onComplete: ({ success, result } = {}) => {
+        this.miniGame = null;
+        this.state = 'playing';
+        this.enterLock = 0.6;
+        if (success) {
+          const advanced = completeStoryObjective(this.story, lv.key);
+          this.toast = '高老庄通过，八戒入队';
+          this.toastTimer = 2.2;
+          this.message = currentStoryInfo(this.story).objective || advanced.chapter.startMessage;
+          this.messageTimer = 6;
+          this.fx.burst(lv.x, lv.y, 28, {
+            color: lv.color,
+            speed: 190,
+            life: 0.75,
+            size: 6,
+            up: 20,
+          });
+          // 将小游戏表现转为主地图资源奖励，作为模块融合反馈。
+          const peaches = result?.peaches || 0;
+          const coinReward = Math.min(40, (result?.coins || 0) + peaches);
+          if (coinReward > 0) {
+            this.coins += coinReward;
+            this.fx.text(this.player.x, this.player.y - 44, `高老庄奖励 +${coinReward} 金币`, '#ffce54');
+          }
+        } else {
+          this.toast = '高老庄试炼未完成';
+          this.toastTimer = 2;
+          this.message = '重新进入高老庄法阵，可再次挑战收服八戒。';
+          this.messageTimer = 5;
+        }
+      },
     });
   }
 
@@ -622,6 +685,11 @@ export class PlayScene {
 
     if (this.debugOverview) {
       this.#drawOverview(r, t);
+      return;
+    }
+
+    if (this.state === 'minigame') {
+      this.miniGame?.draw(r);
       return;
     }
 

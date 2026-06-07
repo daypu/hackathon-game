@@ -14,7 +14,8 @@ export class MenuScene {
   }
 
   enter() {
-    if (new URLSearchParams(location.search).has('boss')) {
+    const params = new URLSearchParams(location.search);
+    if (params.has('boss') || params.has('gaolaozhuang') || params.get('mini') === 'gaolaozhuang') {
       this.g.setScene(new PlayScene(this.g));
       return;
     }

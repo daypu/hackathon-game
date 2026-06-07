@@ -43,7 +43,7 @@ class Obstacle {
      * - air：飞行妖怪，飘在跳跃可达高度
      */
     createMonster(x, groundY, speed, variant) {
-        const size = 40;
+        const size = 55;
         const y = (variant === 'air')
             ? groundY - GAME_CONFIG.MONSTER_AIR_HEIGHT
             : groundY;
@@ -53,6 +53,8 @@ class Obstacle {
         this.visual = this.scene.add.image(x, y, imageName);
         this.visual.setDisplaySize(size, size);
         this.visual.setOrigin(0.5, 1.0);  // 底部对齐
+
+        console.log(`陆地妖怪 variant=${variant}, y=${y}, visual.y=${this.visual.y}`);
 
         this.scene.physics.add.existing(this.visual);
         this.visual.body.setAllowGravity(false);

@@ -73,29 +73,46 @@ class GameScene extends Phaser.Scene {
             g.fillRect(x, y, 4, 4);
         }
 
-        // 物理地面
+        // 物理地面：顶部对齐视觉地面顶部（groundY）
         this.ground = this.physics.add.staticGroup();
         const groundBody = this.add.rectangle(
             GAME_CONFIG.WIDTH / 2,
-            groundY + GAME_CONFIG.GROUND_HEIGHT / 2,
+            groundY-50,  // 直接使用groundY，让物理地面顶部=视觉地面顶部
             GAME_CONFIG.WIDTH,
             GAME_CONFIG.GROUND_HEIGHT
         );
+        // 关键：设置origin让Rectangle的顶部作为锚点
+        groundBody.setOrigin(0.5, 0);
         this.ground.add(groundBody);
         this.ground.refresh();
+
+        console.log('=== 地面物理体 ===');
+        console.log('groundY (视觉顶部):', groundY);
+        console.log('groundBody.y (物理体顶部):', groundBody.y);
+        console.log('groundBody.body.y:', groundBody.body.y);
+        console.log('GROUND_HEIGHT:', GAME_CONFIG.GROUND_HEIGHT);
     }
 
     createPlayers() {
         const groundY = GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_HEIGHT;
         const x = GAME_CONFIG.PLAYER_START_X;
 
+        console.log('=== 地面基线坐标 ===');
+        console.log('groundY:', groundY);
+
         // 悟空（初始显示）- y = groundY 让底部贴地（配合 setOrigin 0.5, 1.0）
         this.wukong = new Wukong(this, x, groundY);
         this.wukong.createVisual();
+        console.log('悟空 this.y:', this.wukong.y);
+        console.log('悟空 visual.y:', this.wukong.visual.y);
+        console.log('悟空 visual.body.y:', this.wukong.visual.body.y);
 
         // 八戒（初始隐藏，放在屏幕外）
         this.bajie = new Bajie(this, x, groundY);
         this.bajie.createVisual();
+        console.log('八戒 this.y:', this.bajie.y);
+        console.log('八戒 visual.y:', this.bajie.visual.y);
+        console.log('八戒 visual.body.y:', this.bajie.visual.body.y);
         this.setPlayerVisible(this.bajie, false);
 
         this.activePlayer = this.wukong;
@@ -135,13 +152,26 @@ class GameScene extends Phaser.Scene {
         const oldPlayer = this.activePlayer;
         const newPlayer = (role === 'wukong') ? this.wukong : this.bajie;
 
-        // 新角色继承旧角色的位置和速度（无缝切换）
+        console.log('=== 角色切换 ===');
+        console.log('从', oldPlayer.type, '切到', newPlayer.type);
+        console.log('旧角色 visual.y:', oldPlayer.visual.y, 'body.y:', oldPlayer.visual.body.y);
+
+        // 新角色继承旧角色的 x 坐标，但 y 坐标重置为地面基线
+        const groundY = GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_HEIGHT;
+        newPlayer.x = oldPlayer.visual.x;
+        newPlayer.y = groundY;  // 重置为地面基线，让物理引擎自动处理落地
         newPlayer.visual.x = oldPlayer.visual.x;
-        newPlayer.visual.y = oldPlayer.visual.y;
+        newPlayer.visual.y = groundY;  // 重置为地面基线
+
+        console.log('切换后 新角色 visual.y:', newPlayer.visual.y);
+        console.log('切换后 新角色 this.y:', newPlayer.y);
+        console.log('切换后 新角色 body.y:', newPlayer.visual.body.y);
+
         if (newPlayer.visual.body && oldPlayer.visual.body) {
+            // 只继承 x 方向速度，y 方向清零（让重力自然处理）
             newPlayer.visual.body.setVelocity(
                 oldPlayer.visual.body.velocity.x,
-                oldPlayer.visual.body.velocity.y
+                0
             );
         }
 

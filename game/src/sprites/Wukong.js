@@ -22,8 +22,18 @@ class Wukong extends Player {
         // 关键：setOrigin(0.5, 1.0) 让图片底部作为锚点 → 图片底边 = 物理体底边 = 地面
         this.visual.setOrigin(0.5, 1.0);
         this.scene.physics.add.existing(this.visual);
-        // body 满高度，宽度 0.7 保留命中宽容
-        this.visual.body.setSize(this.size * 0.7, this.size);
+
+        // 物理体尺寸
+        const bodyWidth = this.size * 0.7;
+        const bodyHeight = this.size * 0.8;
+        this.visual.body.setSize(bodyWidth, bodyHeight);
+
+        // 计算offset：让物理体底部对齐图片底部
+        // offset = size - bodyHeight (60 - 48 = 12)
+        const offsetX = (this.size - bodyWidth) / 2;
+        const offsetY = this.size - bodyHeight;
+        this.visual.body.setOffset(offsetX, offsetY);
+
         this.visual.body.setCollideWorldBounds(true);
     }
 

@@ -721,3 +721,86 @@ work/game/
 5. **kafka 的对比式问题是金句**：「为什么 X 工作 Y 不工作」精确指向问题边界，比让 kafka 描述现象有效 10 倍
 6. **猜测式调参是反模式**：在没确认根因前来回改数值，浪费 kafka 时间和我的信任额度
 
+
+---
+
+## 会话 11 - 2026-06-07（全面像素化 + 陷地根本问题解决）
+
+### 主要工作
+1. **全部贴图替换**：铁扇公主、飞行妖怪、陆地妖怪（跑酷 + Boss战两阶段）
+2. **白底色度抠图**：PIL 把白色/浅灰背景变透明（不是透明像素裁剪，是实打实的白色背景）
+3. **陷地根本问题定位**：kafka 对比"陆地妖怪贴地 vs 悟空八戒陷地"找到根因
+4. **UI 调整**：角色按钮从底部上移到分数下方
+
+### 技术细节
+
+#### 色度抠图（Chroma Key）
+```python
+# 之前的方案：只裁透明边缘（alpha < 10）
+# 新方案：把白色/浅灰背景变透明
+for x, y in all_pixels:
+    r, g, b, a = pixels[x, y]
+    if r > 200 and g > 200 and b > 200:  # 浅色
+        diff = max(r, g, b) - min(r, g, b)
+        if diff < 30:  # 色差小 = 灰度/白色
+            pixels[x, y] = (r, g, b, 0)  # 变透明
+```
+
+**效果**：
+- tieshangongzhu.png: 85,528 像素变透明
+- feixingyaoguai.png: 109,653 像素变透明  
+- ludiyaoguai.png: 82,609 像素变透明
+
+#### 陷地根本问题（kafka 一句话点醒）
+
+**kafka 观察**："为什么陆地妖怪贴地但悟空八戒陷地？"
+
+**根因对比**：
+| 角色 | 传入 y 坐标 | setOrigin | 结果 |
+|---|---|---|---|
+| 陆地妖怪 | `groundY` | (0.5, 1.0) | 底部在地面 ✅ |
+| 悟空八戒 | `groundY - size` | (0.5, 1.0) | 底部在地面下方 ❌ |
+
+**问题**：
+- 旧代码传 `y = groundY - size` 是给**中心锚点**用的
+- 加了 setOrigin(0.5, 1.0) 后锚点变**底部**，但传参没改
+- 导致图片底部在 `groundY - size`，比地面低了 size 的距离
+
+**修复**：
+```javascript
+// 旧：y = groundY - PLAYER_SIZE（给中心锚点用）
+this.wukong = new Wukong(this, x, groundY - GAME_CONFIG.PLAYER_SIZE);
+
+// 新：y = groundY（给底部锚点用）
+this.wukong = new Wukong(this, x, groundY);
+```
+
+### 文件修改清单
+
+| 文件 | 修改内容 |
+|---|---|
+| `assets/images/*.png` | 色度抠图，白底变透明（3 张新图 + 重处理旧图） |
+| `BootScene.js` | 加载铁扇公主/飞行妖怪/陆地妖怪 |
+| `Tieshan.js` | 纯像素图（删扇子+袖口+drawFan） |
+| `GameScene.js` | 跑酷铁扇公主换图 + 悟空八戒 y 坐标改 groundY + 按钮上移 |
+| `Obstacle.js` | 小妖怪换像素图 |
+| `BossMonster.js` | Boss战小妖怪换像素图 |
+
+### kafka 反馈
+1. "白色像素都没有去除啊" → 发现不是透明白色，是不透明白色背景（alpha=255）
+2. "铁扇公主跑酷阶段贴图没换" → 找到 GameScene.spawnBoss
+3. "Boss战扇子和矩形删掉" → 删 fanG/sleeveL/sleeveR
+4. **"为什么小妖怪贴地但悟空八戒陷地"** ← 最关键的对比观察
+
+### 关键反思
+1. **对比思维的威力**：陷地问题困扰 4 次失败，kafka 一句对比直接定位根因
+2. **白底 ≠ 透明边缘**：PIL 处理需要分两种：
+   - 透明边缘裁剪：alpha < threshold → crop
+   - 白底抠图：RGB 判断 → alpha = 0
+3. **锚点与坐标的关系**：改 setOrigin 必须同步改传参，否则语义不一致
+
+### 数据
+- 代码修改：7 个文件
+- 图片处理：6 张 PNG（3 新 + 3 旧重处理）
+- 色度抠图总像素：~28 万像素变透明
+

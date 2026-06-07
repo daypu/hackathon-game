@@ -32,7 +32,7 @@ class BossMonster {
     }
 
     draw(x, y) {
-        const size = 40;
+        const size = 55;
         // 随机选择陆地或飞行妖怪（Boss战里不区分，都在空中乱飞）
         const imageName = Math.random() < 0.5 ? 'ludiyaoguai' : 'feixingyaoguai';
         this.body = this.scene.add.image(x, y, imageName).setDepth(400);

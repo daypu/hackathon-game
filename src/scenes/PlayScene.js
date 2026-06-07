@@ -50,6 +50,7 @@ export class PlayScene {
     // 调试：URL 带 ?gaolaozhuang 或 ?mini=gaolaozhuang 时直接进入高老庄小游戏
     const params = new URLSearchParams(location.search);
     this.debugGaolaozhuang = params.has('gaolaozhuang') || params.get('mini') === 'gaolaozhuang';
+    this.debugHuoyanshan = params.has('huoyanshan') || params.get('mini') === 'huoyanshan';
   }
 
   enter() {
@@ -88,6 +89,7 @@ export class PlayScene {
       const lv = LEVELS.find((level) => level.key === 'gaolaozhuang');
       if (lv) this.#startGaolaozhuangLevel(lv);
     }
+    else if (this.debugHuoyanshan) this.#openOriginalHuoyanshan();
   }
 
   exit() {
@@ -563,6 +565,10 @@ export class PlayScene {
       this.#startGaolaozhuangLevel(lv);
       return;
     }
+    if (lv.key === 'huoyanshan') {
+      this.#openOriginalHuoyanshan();
+      return;
+    }
     const result = completeStoryObjective(this.story, lv.key);
     if (result.advanced) {
       this.toast = `已点亮：${lv.label}`;
@@ -633,6 +639,12 @@ export class PlayScene {
         }
       },
     });
+  }
+
+  #openOriginalHuoyanshan() {
+    const base = import.meta.env.BASE_URL || '/';
+    const originalUrl = `${base}huoyanshan-original/`;
+    window.location.assign(originalUrl);
   }
 
   #nearestNpc() {

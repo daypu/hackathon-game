@@ -7,6 +7,8 @@ const BOAT_CY = 315;
 const BOAT_HULL_H = 96;
 const DEMON_ROW_FACTOR = 0.42;
 const DEMON_BAIL_FACTOR = 0.55;
+const WAVE_BUILD_FRAC = 0.45;
+const WAVE_IMPACT_SECONDS = 0.5;
 
 export class RaftMiniGameScene {
   constructor(game, opts = {}) {
@@ -46,13 +48,19 @@ export class RaftMiniGameScene {
       rowHintCooldown: 0,
       lockHintCooldown: 0,
       rowPraiseCooldown: 0,
+      distGlowTimer: 0,
+      distHintCooldown: 0,
 
       waterLevel: 0,
       bailCooldownTimer: 0,
       bailPraiseCooldown: 0,
+      waterSloshTimer: 0,
       waveActive: false,
       waveSide: null,
-      waveWarningTimer: 0,
+      waveStage: null,
+      waveStageTimer: 0,
+      waveBuildTimer: 0,
+      waveImpactTimer: 0,
       waveImpactFlash: 0,
 
       monkFear: TUNING.fear.start,
@@ -166,47 +174,86 @@ export class RaftMiniGameScene {
     const cx = GAME.width / 2;
     const baseCy = BOAT_CY + Math.sin(t * 2) * 2;
     const boatImg = this._img('boat');
-    const baseRot = -Math.PI / 2;
+    const baseRot = 0;
     const rowK = clamp((s.rowFeedbackTimer || 0) / (TUNING.action.feedbackSeconds || 0.35), 0, 1);
-    const rowRot = s.lastRowKey ? (s.lastRowKey === 'left' ? 0.025 : -0.025) * rowK : 0;
+    const rowRot = s.lastRowKey ? (s.lastRowKey === 'left' ? 0.014 : -0.014) * rowK : 0;
     const idleRot = Math.sin(t * 1.3) * 0.004;
     const rot = baseRot + rowRot + idleRot;
 
     let drawW = 280;
     let drawH = 150;
     if (boatImg) {
-      const targetLen = 292;
-      const s0 = targetLen / Math.max(1, boatImg.width);
-      drawW = boatImg.width * s0;
-      drawH = boatImg.height * s0;
-      const worldWidth = drawH;
-      if (worldWidth < 130) {
-        const k = 130 / Math.max(1, worldWidth);
-        drawW *= k;
-        drawH *= k;
-      } else if (worldWidth > 180) {
-        const k = 180 / worldWidth;
-        drawW *= k;
-        drawH *= k;
-      }
-      const worldLen = drawW;
-      if (worldLen < 260) {
-        const k = 260 / Math.max(1, worldLen);
-        drawW *= k;
-        drawH *= k;
-      } else if (worldLen > 320) {
-        const k = 320 / worldLen;
-        drawW *= k;
-        drawH *= k;
-      }
+      const targetW = 320;
+      drawW = targetW;
+      drawH = targetW * (boatImg.height / Math.max(1, boatImg.width));
+      drawW = clamp(drawW, 260, 360);
+      drawH = clamp(drawH, 140, 240);
     }
 
     const riverBottom = GAME.height - BOTTOM_HUD_H;
-    const halfLen = drawW / 2;
-    const overflow = baseCy + halfLen - (riverBottom - 8);
+    const halfH = drawH / 2;
+    const overflow = baseCy + halfH - (riverBottom - 8);
     const cy = overflow > 0 ? baseCy - overflow : baseCy;
 
-    return { cx, cy, drawW, drawH, rot };
+    const baseFwd = { x: 0.78, y: -0.62 };
+    const baseRight = { x: -baseFwd.y, y: baseFwd.x };
+    const fwd = this._rotatePoint(baseFwd.x, baseFwd.y, rot);
+    const right = this._rotatePoint(baseRight.x, baseRight.y, rot);
+    const len = drawW * 0.46;
+    const wid = drawH * 0.42;
+    const bowX = cx + fwd.x * len;
+    const bowY = cy + fwd.y * len;
+    const tailX = cx - fwd.x * len;
+    const tailY = cy - fwd.y * len;
+
+    return {
+      cx,
+      cy,
+      drawW,
+      drawH,
+      rot,
+      fwd,
+      right,
+      len,
+      wid,
+      bowX,
+      bowY,
+      tailX,
+      tailY,
+    };
+  }
+
+  _getBoatAnchors(s, t) {
+    const boat = this._boatPose(s, t);
+    const back = { x: -boat.fwd.x, y: -boat.fwd.y };
+    const sideOffset = boat.drawW * 0.22;
+    const along = boat.len * 0.06;
+    const waterline = 6;
+    const leftOar = {
+      x: boat.cx - sideOffset + boat.fwd.x * along,
+      y: boat.cy + boat.fwd.y * along + waterline,
+    };
+    const rightOar = {
+      x: boat.cx + sideOffset + boat.fwd.x * along,
+      y: boat.cy + boat.fwd.y * along + waterline,
+    };
+    const center = { x: boat.cx, y: boat.cy };
+    const bow = { x: boat.bowX, y: boat.bowY };
+    const stern = { x: boat.tailX, y: boat.tailY };
+    const sternWake = { x: stern.x + back.x * 10, y: stern.y + back.y * 10 };
+    const interiorWater = {
+      x: boat.cx - boat.fwd.x * 10 - boat.right.x * 10,
+      y: boat.cy - boat.fwd.y * 10 - boat.right.y * 10 + 6,
+    };
+    const shaX = boat.cx - boat.fwd.x * 28 - boat.right.x * 18;
+    const shaY = boat.cy - boat.fwd.y * 28 - boat.right.y * 18;
+    const bailFrom = { x: shaX + boat.fwd.x * 2, y: shaY + boat.fwd.y * 2 + 10 };
+    const preferLeft = !(s?.frontDemonActive && s?.demonSide === 'left');
+    const bailSide = preferLeft ? 'left' : 'right';
+    const bailTo0 = bailSide === 'left' ? leftOar : rightOar;
+    const bailOut = { x: bailSide === 'left' ? -1 : 1, y: 0 };
+    const bailTo = { x: bailTo0.x + bailOut.x * 74 + back.x * 10, y: bailTo0.y + 26 + back.y * 6 };
+    return { boat, center, bow, stern, leftOar, rightOar, sternWake, interiorWater, bailFrom, bailTo, back };
   }
 
   _makeRunMods() {
@@ -260,7 +307,7 @@ export class RaftMiniGameScene {
     const nearV = clamp(near - recoil * 0.22, 0, 1);
     const riverBottom = GAME.height - BOTTOM_HUD_H;
     const boat = this._boatPose(s, t);
-    const boatBottom = boat.cy + boat.drawW / 2;
+    const boatBottom = boat.tailY + 18;
 
     const topFar = riverBottom - 12;
     const topNear = boatBottom + 14;
@@ -318,6 +365,8 @@ export class RaftMiniGameScene {
     s.rowHintCooldown = Math.max(0, s.rowHintCooldown - dt);
     s.lockHintCooldown = Math.max(0, s.lockHintCooldown - dt);
     s.rowPraiseCooldown = Math.max(0, s.rowPraiseCooldown - dt);
+    s.distGlowTimer = Math.max(0, s.distGlowTimer - dt);
+    s.distHintCooldown = Math.max(0, s.distHintCooldown - dt);
     s.waveImpactFlash = Math.max(0, s.waveImpactFlash - dt);
     s.demonHitFlash = Math.max(0, s.demonHitFlash - dt);
     s.demonWrongFlash = Math.max(0, s.demonWrongFlash - dt);
@@ -325,6 +374,7 @@ export class RaftMiniGameScene {
     s.speedDebuffTimer = Math.max(0, s.speedDebuffTimer - dt);
     s.bailCooldownTimer = Math.max(0, s.bailCooldownTimer - dt);
     s.bailPraiseCooldown = Math.max(0, s.bailPraiseCooldown - dt);
+    s.waterSloshTimer = Math.max(0, s.waterSloshTimer - dt);
     s.monkCalmTimer = Math.max(0, s.monkCalmTimer - dt);
     s.demonDefeatTimer = Math.max(0, s.demonDefeatTimer - dt);
     s.camShakeTimer = Math.max(0, s.camShakeTimer - dt);
@@ -429,20 +479,26 @@ export class RaftMiniGameScene {
       st.maxCombo = Math.max(st.maxCombo, combo);
     }
 
+    const nearFull = s.monsterDistance >= T.monster.startDistance * 0.98;
+    if (nearFull) s.distGlowTimer = Math.max(s.distGlowTimer, 0.65);
+    if (nearFull && !same && s.distHintCooldown <= 0) {
+      this._say(Math.random() < 0.5 ? '稳住节奏！' : '保持距离！', 0.9);
+      s.distHintCooldown = 2.4;
+    }
+
     const side = key === 'left' ? -1 : 1;
-    const boat = this._boatPose(s, this.g.t);
-    const p0 = this._rotatePoint(-boat.drawW * 0.12, side * (boat.drawH * 0.55), boat.rot);
-    const tail = this._rotatePoint(-boat.drawW * 0.56, 0, boat.rot);
-    const out = this._rotatePoint(0, side, boat.rot);
-    const back = this._rotatePoint(-1, 0, boat.rot);
-    const sx = boat.cx + p0.x;
-    const sy = boat.cy + p0.y;
-    const tx = boat.cx + tail.x;
-    const ty = boat.cy + tail.y;
-    const sprayN = same ? 4 : 6;
-    const wakeN = same ? 6 : 9;
-    this._spawnFx('spray', sx, sy, out.x * 160 + back.x * 70, out.y * 160 + back.y * 70, 0.5, sprayN);
-    this._spawnFx('wake', tx, ty, back.x * 18, back.y * 64, 0.55, wakeN);
+    const a = this._getBoatAnchors(s, this.g.t);
+    const out = { x: side, y: 0 };
+    const oar = side < 0 ? a.leftOar : a.rightOar;
+    const sx = oar.x;
+    const sy = oar.y;
+    const tx = a.sternWake.x;
+    const ty = a.sternWake.y;
+    const boost = nearFull ? 1.25 : 1;
+    const sprayN = same ? 4 : Math.round(6 * boost);
+    const wakeN = same ? 6 : Math.round(9 * boost);
+    this._spawnFx('spray', sx, sy, out.x * 190 * boost + a.back.x * 60, out.y * 44 + a.back.y * 60, 0.52, sprayN);
+    this._spawnFx('wake', tx, ty, a.back.x * 26, a.back.y * 88 * boost, 0.6, wakeN);
     if (!same) {
       s.boatJoltTimer = 0.14;
       s.boatJoltX = -side * 1.2;
@@ -458,8 +514,8 @@ export class RaftMiniGameScene {
 
       const burst = combo >= 8 ? 18 : combo >= 5 ? 14 : 10;
       const v = combo >= 8 ? 64 : combo >= 5 ? 52 : 42;
-      this._spawnFx('spray', sx, sy, out.x * (180 + v) + back.x * 90, out.y * (180 + v) + back.y * 90, 0.6, burst);
-      this._spawnFx('wake', tx, ty, back.x * 28, back.y * (80 + v), 0.6, burst);
+      this._spawnFx('spray', sx, sy, out.x * (240 + v) + a.back.x * 90, out.y * 60 + a.back.y * (90 + v * 0.4), 0.6, burst);
+      this._spawnFx('wake', tx, ty, a.back.x * 40, a.back.y * (110 + v), 0.6, burst);
 
       if (danger) {
         s.camShakeTimer = 0.24;
@@ -484,14 +540,27 @@ export class RaftMiniGameScene {
     s.actionMode = 'bailing';
     s.actionLockTimer = T.action.bailingSeconds;
     const cd = T.water.bailCooldownSeconds ?? T.action.bailingSeconds;
-    const boat = this._boatPose(s, this.g.t);
-    const p0 = this._rotatePoint(-boat.drawW * 0.06, boat.drawH * 0.55, boat.rot);
-    const out = this._rotatePoint(0, 1, boat.rot);
-    const back = this._rotatePoint(-1, 0, boat.rot);
-    const bx = boat.cx + p0.x;
-    const by = boat.cy + p0.y;
+    const a = this._getBoatAnchors(s, this.g.t);
+    const out = { x: a.bailTo.x - a.bailFrom.x, y: a.bailTo.y - a.bailFrom.y };
+    const outLen = Math.hypot(out.x, out.y) || 1;
+    out.x /= outLen;
+    out.y /= outLen;
+    const bx = a.bailTo.x;
+    const by = a.bailTo.y;
     if (s.bailCooldownTimer > 0) {
-      this._spawnFx('spray', bx, by, out.x * 120 + back.x * 40, out.y * 120 + back.y * 40, 0.35, 4);
+      this.fx.p.push({
+        kind: 'bailSplash',
+        layer: 'under',
+        x: bx,
+        y: by,
+        vx: out.x * 10,
+        vy: out.y * 10,
+        life: 0.28,
+        age: 0,
+        r: 10,
+        a0: 0.22,
+      });
+      this._spawnFx('spray', bx, by, out.x * 120 + a.back.x * 40, out.y * 80 + a.back.y * 40, 0.32, 3);
       return;
     }
     const prev = s.waterLevel;
@@ -499,12 +568,38 @@ export class RaftMiniGameScene {
     s.waterLevel = Math.max(0, s.waterLevel - T.water.bailAmount * factor * protect);
     s.bailCooldownTimer = cd;
     if (s.stats) s.stats.bails += 1;
-    this._spawnFx('spray', bx, by, out.x * 160 + back.x * 60, out.y * 160 + back.y * 60, 0.5, 10);
+    s.waterSloshTimer = Math.max(s.waterSloshTimer, 0.38);
+
+    this.fx.p.push({
+      kind: 'bailArc',
+      layer: 'boat',
+      x0: a.bailFrom.x,
+      y0: a.bailFrom.y,
+      x1: a.bailTo.x,
+      y1: a.bailTo.y,
+      life: 0.34,
+      age: 0,
+      r: 1,
+    });
+    this.fx.p.push({
+      kind: 'bailSplash',
+      layer: 'under',
+      x: bx,
+      y: by,
+      vx: out.x * 14,
+      vy: out.y * 10,
+      life: 0.5,
+      age: -0.12,
+      r: 20,
+      a0: 0.34,
+    });
+    this._spawnFx('spray', bx, by, out.x * 170 + a.back.x * 50, out.y * 120 + a.back.y * 40, 0.55, 12);
+    this._spawnFx('spray', a.interiorWater.x, a.interiorWater.y, out.x * 20, -90, 0.35, 4);
     const lift = clamp(prev / T.water.max, 0, 1);
     if (lift > 0.55) {
       const n = 5 + Math.floor(lift * 8);
-      this._spawnFx('spray', bx, by, out.x * 120 + back.x * 70, out.y * 120 + back.y * 70, 0.55, n);
-      this._spawnFx('spray', bx, by, out.x * 150 + back.x * 80, out.y * 150 + back.y * 80, 0.55, n);
+      this._spawnFx('spray', bx, by, out.x * 120 + a.back.x * 60, out.y * 110 + a.back.y * 60, 0.55, n);
+      this._spawnFx('spray', bx, by, out.x * 150 + a.back.x * 70, out.y * 130 + a.back.y * 70, 0.55, n);
     }
     if (prev > 70 && s.waterLevel < 64 && s.bailPraiseCooldown <= 0) {
       this._say('水位降下来了！', 1.0);
@@ -539,14 +634,21 @@ export class RaftMiniGameScene {
     for (let i = p.length - 1; i >= 0; i--) {
       const a = p[i];
       a.age += dt;
-      a.x += a.vx * dt;
-      a.y += a.vy * dt;
+      if (a.kind === 'bailArc') {
+        if (a.age >= a.life) p.splice(i, 1);
+        continue;
+      }
+      if (a.x != null) a.x += (a.vx || 0) * dt;
+      if (a.y != null) a.y += (a.vy || 0) * dt;
       if (a.kind === 'wake') {
         a.vx *= Math.pow(0.3, dt);
         a.vy *= Math.pow(0.3, dt);
       } else if (a.kind === 'wave') {
         a.vx *= Math.pow(0.22, dt);
         a.vy *= Math.pow(0.22, dt);
+      } else if (a.kind === 'bailSplash') {
+        a.vx *= Math.pow(0.25, dt);
+        a.vy = a.vy * Math.pow(0.3, dt) + 120 * dt;
       } else {
         a.vx *= Math.pow(0.12, dt);
         a.vy = a.vy * Math.pow(0.2, dt) + 90 * dt;
@@ -591,7 +693,10 @@ export class RaftMiniGameScene {
     const T = TUNING;
     s.waveActive = true;
     s.waveSide = side;
-    s.waveWarningTimer = T.wave.warningSeconds;
+    s.waveStage = 'warn';
+    s.waveBuildTimer = Math.max(0.25, (T.wave.warningSeconds || 1) * WAVE_BUILD_FRAC);
+    s.waveStageTimer = Math.max(0.05, (T.wave.warningSeconds || 1) - s.waveBuildTimer);
+    s.waveImpactTimer = 0;
     this._say(`${this._sideLabel(s.waveSide)}水浪！准备舀水！`, 1.2);
   }
 
@@ -630,21 +735,53 @@ export class RaftMiniGameScene {
 
     if (!s.waveActive) return;
 
-    s.waveWarningTimer -= dt;
-    if (s.waveWarningTimer <= 0) {
-      s.waveActive = false;
-      s.waveWarningTimer = 0;
-      s.waveImpactFlash = 0.35;
-      const waveMul = s.runMods?.waveMul ?? 1;
-      const fearMul = s.runMods?.fearMul ?? 1;
-      s.waterLevel = Math.min(T.water.max, s.waterLevel + T.water.waveAdd * waveMul);
-      s.monkFear = clamp(s.monkFear + T.fear.hitByWaveAdd * fearMul, 0, T.fear.max);
-      if (s.stats) s.stats.waveHits += 1;
-      this._say('水浪进船！连点 Space 舀水！', 1.2);
-      const side = s.waveSide === 'left' ? -1 : 1;
-      const x = GAME.width / 2 + side * 160;
-      this._spawnFx('wave', x, 310, -side * 120, 10, 0.6, 14);
-      this._spawnFx('spray', GAME.width / 2 + side * 64, 318, -side * 20, -80, 0.55, 10);
+    if (s.waveStage === 'warn') {
+      s.waveStageTimer -= dt;
+      if (s.waveStageTimer <= 0) {
+        s.waveStage = 'build';
+        s.waveStageTimer = s.waveBuildTimer;
+        const side = s.waveSide === 'left' ? -1 : 1;
+        const riverTop = TOP_HUD_H + 4;
+        const y = riverTop + 56 + (this._noise1D(this.g.t * 3, 811) * 10);
+        this._spawnFx('wave', GAME.width / 2 + side * 260, y, -side * 160, 0, 0.7, 10);
+      }
+      return;
+    }
+
+    if (s.waveStage === 'build') {
+      s.waveStageTimer -= dt;
+      if (s.waveStageTimer <= 0) {
+        s.waveStage = 'impact';
+        s.waveStageTimer = WAVE_IMPACT_SECONDS;
+        s.waveImpactTimer = WAVE_IMPACT_SECONDS;
+        s.waveImpactFlash = 0.35;
+        s.waterSloshTimer = Math.max(s.waterSloshTimer, 0.42);
+        const waveMul = s.runMods?.waveMul ?? 1;
+        const fearMul = s.runMods?.fearMul ?? 1;
+        s.waterLevel = Math.min(T.water.max, s.waterLevel + T.water.waveAdd * waveMul);
+        s.monkFear = clamp(s.monkFear + T.fear.hitByWaveAdd * fearMul, 0, T.fear.max);
+        if (s.stats) s.stats.waveHits += 1;
+        this._say('水浪进船！连点 Space 舀水！', 1.2);
+        const side = s.waveSide === 'left' ? -1 : 1;
+        const a = this._getBoatAnchors(s, this.g.t);
+        const hitX = (side < 0 ? a.leftOar.x : a.rightOar.x) + side * 32;
+        const hitY = (side < 0 ? a.leftOar.y : a.rightOar.y) - 10;
+        this._spawnFx('wave', hitX, hitY, -side * 180, -30, 0.7, 18);
+        this._spawnFx('spray', hitX - side * 12, hitY + 14, -side * 40, -120, 0.65, 16);
+        this._spawnFx('wake', a.sternWake.x, a.sternWake.y, a.back.x * 40, a.back.y * 120, 0.65, 14);
+      }
+      return;
+    }
+
+    if (s.waveStage === 'impact') {
+      s.waveStageTimer -= dt;
+      s.waveImpactTimer = Math.max(0, s.waveImpactTimer - dt);
+      if (s.waveStageTimer <= 0) {
+        s.waveActive = false;
+        s.waveStage = null;
+        s.waveStageTimer = 0;
+        s.waveImpactTimer = 0;
+      }
     }
   }
 
@@ -741,8 +878,12 @@ export class RaftMiniGameScene {
     }
 
     s.demonIndex += 1;
-    const x = GAME.width / 2 + (s.demonSide === 'left' ? -220 : 220);
-    this._spawnFx('hit', x, 170, 0, -40, 0.35, 6);
+    const sign = s.demonSide === 'left' ? -1 : 1;
+    const aBoat = this._getBoatAnchors(s, this.g.t);
+    const x = aBoat.center.x + aBoat.boat.fwd.x * (aBoat.boat.len * 0.65) + aBoat.boat.right.x * sign * (aBoat.boat.wid * 1.55);
+    const y0 = aBoat.center.y + aBoat.boat.fwd.y * (aBoat.boat.len * 0.65) + aBoat.boat.right.y * sign * (aBoat.boat.wid * 1.55) + 14;
+    const y = clamp(y0, TOP_HUD_H + 110, GAME.height - BOTTOM_HUD_H - 120);
+    this._spawnFx('hit', x, y - 30, 0, -60, 0.35, 8);
     if (s.demonIndex >= s.demonSequence.length) {
       const side = s.demonSide;
       s.frontDemonActive = false;
@@ -752,7 +893,7 @@ export class RaftMiniGameScene {
       s.demonSequence = [];
       s.demonIndex = 0;
       if (s.stats) s.stats.demonHit += 1;
-      this._spawnFx('hit', x, 170, 0, -60, 0.5, 10);
+      this._spawnFx('hit', x, y - 30, 0, -80, 0.5, 14);
       this._say('击退妖怪！', 1.0);
       s.demonDefeatTimer = 0.65;
       s.demonDefeatSide = side;
@@ -899,8 +1040,13 @@ export class RaftMiniGameScene {
     if (!p.length) return;
 
     for (const a of p) {
-      const under = a.kind === 'wake' || a.kind === 'wave';
-      if ((layer === 'under') !== under) continue;
+      if (a.layer) {
+        if (a.layer !== layer) continue;
+      } else {
+        if (layer === 'boat') continue;
+        const under = a.kind === 'wake' || a.kind === 'wave';
+        if ((layer === 'under') !== under) continue;
+      }
 
       const t = clamp(1 - a.age / a.life, 0, 1);
       if (a.kind === 'wake') {
@@ -922,6 +1068,47 @@ export class RaftMiniGameScene {
         ctx.save();
         ctx.globalAlpha = 0.18 + t * 0.6;
         r.circle(a.x, a.y, a.r + (1 - t) * 6, 'rgba(255,206,84,0.95)');
+        ctx.restore();
+      } else if (a.kind === 'bailArc') {
+        const p0 = clamp(a.age / Math.max(0.001, a.life), 0, 1);
+        const x0 = a.x0;
+        const y0 = a.y0;
+        const x1 = a.x1;
+        const y1 = a.y1;
+        const mx = (x0 + x1) * 0.5;
+        const my = (y0 + y1) * 0.5 - 76;
+        const steps = 10;
+        ctx.save();
+        ctx.globalAlpha = 0.15 + 0.65 * (1 - p0);
+        ctx.strokeStyle = 'rgba(189,239,255,0.9)';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+          const tt = (i / steps) * p0;
+          const it = 1 - tt;
+          const x = it * it * x0 + 2 * it * tt * mx + tt * tt * x1;
+          const y = it * it * y0 + 2 * it * tt * my + tt * tt * y1;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha *= 0.55;
+        r.circle(x1, y1, 3 + p0 * 3, 'rgba(255,206,84,0.7)');
+        ctx.restore();
+      } else if (a.kind === 'bailSplash') {
+        const t0 = clamp(a.age / Math.max(0.001, a.life), 0, 1);
+        const grow = 1 - Math.pow(1 - t0, 2);
+        ctx.save();
+        const a0 = a.a0 ?? 0.3;
+        ctx.globalAlpha = a.age < 0 ? 0 : a0 * (1 - t0);
+        ctx.strokeStyle = 'rgba(189,239,255,0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(a.x, a.y, a.r * grow, a.r * 0.55 * grow, 0, 0.1, Math.PI * 1.9);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.8;
+        r.circle(a.x, a.y, 2 + grow * 3, 'rgba(189,239,255,0.9)');
         ctx.restore();
       }
     }
@@ -960,6 +1147,12 @@ export class RaftMiniGameScene {
     const distRatio = this._monsterDistRatio(s);
     const distColor = s.monsterDistance > 40 ? '#7ed957' : s.monsterDistance > 22 ? '#ffce54' : '#ff7a6a';
     r.roundRect(bx + 2, by + 22, (bw - 4) * distRatio, 8, 4, distColor);
+    if (distRatio > 0.96) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.g.t * 7.2);
+      const gk = clamp((s.distGlowTimer || 0) / 0.65, 0, 1);
+      const a = (0.08 + 0.16 * pulse) * (0.4 + 0.6 * gk);
+      r.roundRect(bx + 1, by + 21, bw - 2, 10, 5, `rgba(255,206,84,${a})`, `rgba(255,206,84,${0.28 + a})`, 2);
+    }
 
     const wx = 390;
     r.text(`进水 ${Math.round(s.waterLevel)}`, wx, by + 14, { size: 13, color: '#9fd0ff', weight: '800' });
@@ -1025,13 +1218,17 @@ export class RaftMiniGameScene {
     const topY = TOP_HUD_H + 12;
 
     if (s.waveActive) {
-      const a = clamp(s.waveWarningTimer / TUNING.wave.warningSeconds, 0, 1);
-      const p = 1 - a;
+      const stage = s.waveStage || 'warn';
+      const timeToHit =
+        stage === 'warn' ? Math.max(0, s.waveStageTimer) + Math.max(0, s.waveBuildTimer || 0) : stage === 'build' ? Math.max(0, s.waveStageTimer) : 0;
+      const total = TUNING.wave.warningSeconds || 1;
+      const p = 1 - clamp(timeToHit / Math.max(0.001, total), 0, 1);
+      const buildK = stage === 'warn' ? 0 : stage === 'build' ? 1 - clamp(timeToHit / Math.max(0.001, s.waveBuildTimer || 0.001), 0, 1) : 1;
       const side = s.waveSide;
       const x = side === 'left' ? 0 : W - 180;
       r.roundRect(x + 18, topY, 162, 44, 12, `rgba(74,163,255,${0.12 + 0.22 * p})`, '#4aa3ff', 2);
       r.text(`${this._sideLabel(side)}水浪！`, x + 99, topY + 26, { size: 14, color: '#9fd0ff', align: 'center', weight: '900' });
-      r.text(`即将拍来 ${Math.max(0, s.waveWarningTimer).toFixed(1)}s`, x + 99, topY + 44, { size: 12, color: '#cfc6e8', align: 'center', weight: '800' });
+      r.text(`即将拍来 ${timeToHit.toFixed(1)}s`, x + 99, topY + 44, { size: 12, color: '#cfc6e8', align: 'center', weight: '800' });
 
       const img = this._img(side === 'left' ? 'waveLeft' : 'waveRight');
       if (img) {
@@ -1040,12 +1237,15 @@ export class RaftMiniGameScene {
         const ar = img.width / Math.max(1, img.height);
         const h = riverH;
         const w2 = h * ar;
-        const shift = p * 220;
+        const shift = (0.15 + 0.85 * p) * 240;
         const baseX = side === 'left' ? -w2 + shift : W - shift;
-        const jitter = this._noise1D(this.g.t * 9, 771) * (2 + p * 4);
+        const jitter = this._noise1D(this.g.t * 9, 771) * (2 + p * 6);
+        const scale = 0.96 + buildK * 0.08;
         ctx.save();
-        ctx.globalAlpha = 0.2 + p * 0.6;
-        ctx.drawImage(img, baseX + jitter, riverTop, w2, h);
+        ctx.globalAlpha = 0.12 + p * 0.72;
+        ctx.translate(baseX + jitter + w2 / 2, riverTop + h / 2);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, -w2 / 2, -h / 2, w2, h);
         ctx.restore();
       } else {
         const wallW = 140;
@@ -1066,24 +1266,27 @@ export class RaftMiniGameScene {
 
     if (s.frontDemonActive) {
       const side = s.demonSide;
-      const x = side === 'left' ? 330 : 630;
-      let anchorY = 220 + (this.messageTimer > 0 ? 18 : 0);
-      anchorY = clamp(anchorY, 190, 250);
+      const sign = side === 'left' ? -1 : 1;
+      const aBoat = this._getBoatAnchors(s, this.g.t);
       const bob = Math.sin(this.g.t * 6) * 4;
-      const demonY = anchorY + bob;
-      const py = clamp(demonY - 96, TOP_HUD_H + 8, GAME.height - BOTTOM_HUD_H - 170);
+      const demonX = aBoat.center.x + aBoat.boat.fwd.x * (aBoat.boat.len * 0.65) + aBoat.boat.right.x * sign * (aBoat.boat.wid * 1.55);
+      const demonY0 = aBoat.center.y + aBoat.boat.fwd.y * (aBoat.boat.len * 0.65) + aBoat.boat.right.y * sign * (aBoat.boat.wid * 1.55) + 14;
+      const demonY = clamp(demonY0 + bob, TOP_HUD_H + 110, GAME.height - BOTTOM_HUD_H - 120);
+
+      const qteX = side === 'left' ? 168 : W - 168;
+      const py = TOP_HUD_H + 64;
       const n = s.demonSequence.length;
       const done = s.demonIndex;
       const w = 24 * n + 22;
       const flash = clamp(s.demonWrongFlash / 0.35, 0, 1);
       const bg = flash > 0 ? `rgba(255,122,106,${0.12 + flash * 0.18})` : 'rgba(20,14,28,0.65)';
       const stroke = flash > 0 ? '#ff7a6a' : '#ff7a6a';
-      r.roundRect(x - 86, py, 172, 82, 12, bg, stroke, 2);
-      r.text(`${side === 'left' ? '左前' : '右前'}妖怪`, x, py + 22, { size: 14, color: '#ff7a6a', align: 'center', weight: '900' });
+      r.roundRect(qteX - 86, py, 172, 82, 12, bg, stroke, 2);
+      r.text(`${side === 'left' ? '左前' : '右前'}妖怪`, qteX, py + 22, { size: 14, color: '#ff7a6a', align: 'center', weight: '900' });
 
-      r.roundRect(x - w / 2, py + 32, w, 28, 10, 'rgba(10,8,18,0.65)', 'rgba(255,255,255,0.14)', 1);
+      r.roundRect(qteX - w / 2, py + 32, w, 28, 10, 'rgba(10,8,18,0.65)', 'rgba(255,255,255,0.14)', 1);
       for (let i = 0; i < n; i++) {
-        const xx = x - w / 2 + 12 + i * 24;
+        const xx = qteX - w / 2 + 12 + i * 24;
         const hot = i === done;
         const ok = i < done;
         const pad = hot ? 2 : 0;
@@ -1104,32 +1307,49 @@ export class RaftMiniGameScene {
       }
 
       const ratio = clamp(s.demonTimerMax > 0 ? s.demonTimer / s.demonTimerMax : 0, 0, 1);
-      r.roundRect(x - 62, py + 66, 124, 8, 4, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.4)', 1);
-      r.roundRect(x - 60, py + 68, 120 * ratio, 4, 3, '#ff7a6a');
+      r.roundRect(qteX - 62, py + 66, 124, 8, 4, 'rgba(10,8,18,0.85)', 'rgba(0,0,0,0.4)', 1);
+      r.roundRect(qteX - 60, py + 68, 120 * ratio, 4, 3, '#ff7a6a');
 
       ctx.save();
       ctx.globalAlpha = 0.9;
       ctx.fillStyle = '#2d1c2c';
       ctx.beginPath();
-      ctx.moveTo(x, py - 10);
-      ctx.lineTo(x + (side === 'left' ? -24 : 24), py + 16);
-      ctx.lineTo(x, py + 22);
-      ctx.lineTo(x + (side === 'left' ? 18 : -18), py + 16);
+      ctx.moveTo(qteX, py - 10);
+      ctx.lineTo(qteX + (side === 'left' ? -24 : 24), py + 16);
+      ctx.lineTo(qteX, py + 22);
+      ctx.lineTo(qteX + (side === 'left' ? 18 : -18), py + 16);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
 
       ctx.save();
       const demonImg = this._img('monsterFrontDemon');
+      const auraPulse = 0.6 + 0.4 * Math.sin(this.g.t * 5.4);
+      const auraA = (0.14 + 0.26 * auraPulse) * (1 - flash * 0.4);
+      ctx.save();
+      ctx.globalAlpha = auraA;
+      const g = ctx.createRadialGradient(demonX, demonY + 16, 10, demonX, demonY + 16, 140);
+      g.addColorStop(0, 'rgba(110,40,150,0.75)');
+      g.addColorStop(0.55, 'rgba(60,20,90,0.35)');
+      g.addColorStop(1, 'rgba(20,10,35,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(demonX, demonY + 16, 140, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
       if (demonImg) {
-        const baseW = 140;
+        const baseW = 210;
         const ar = demonImg.height / Math.max(1, demonImg.width);
         const w2 = baseW * (1 + flash * 0.08);
         const h2 = w2 * ar;
-        this._drawSpriteRotated(demonImg, x, demonY, w2, h2, 0, 0.28 + (flash > 0 ? 0.08 : 0), side === 'left');
+        ctx.save();
+        ctx.shadowColor = 'rgba(170,90,255,0.65)';
+        ctx.shadowBlur = 26;
+        this._drawSpriteRotated(demonImg, demonX, demonY, w2, h2, 0, 0.74 + (flash > 0 ? 0.08 : 0), side === 'left');
+        ctx.restore();
         if (flash > 0) {
           ctx.save();
-          ctx.translate(x, demonY);
+          ctx.translate(demonX, demonY);
           if (side === 'left') ctx.scale(-1, 1);
           ctx.globalAlpha = 0.35 * flash;
           ctx.globalCompositeOperation = 'source-atop';
@@ -1142,15 +1362,27 @@ export class RaftMiniGameScene {
         ctx.globalAlpha = demonA;
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
         ctx.beginPath();
-        ctx.moveTo(x, demonY - 18);
-        ctx.lineTo(x + (side === 'left' ? -26 : 26), demonY + 18);
-        ctx.lineTo(x, demonY + 12);
-        ctx.lineTo(x + (side === 'left' ? 18 : -18), demonY + 18);
+        ctx.moveTo(demonX, demonY - 18);
+        ctx.lineTo(demonX + (side === 'left' ? -26 : 26), demonY + 18);
+        ctx.lineTo(demonX, demonY + 12);
+        ctx.lineTo(demonX + (side === 'left' ? 18 : -18), demonY + 18);
         ctx.closePath();
         ctx.fill();
         ctx.globalAlpha = 0.35;
-        r.circle(x - 8, demonY - 2, 3, '#ffce54');
-        r.circle(x + 8, demonY - 2, 3, '#ffce54');
+        r.circle(demonX - 8, demonY - 2, 3, '#ffce54');
+        r.circle(demonX + 8, demonY - 2, 3, '#ffce54');
+      }
+      ctx.restore();
+
+      ctx.save();
+      const burstK = 0.7 + 0.3 * Math.sin(this.g.t * 8.2);
+      ctx.globalAlpha = (0.08 + 0.18 * burstK) * (1 - flash * 0.5);
+      const nBurst = 8;
+      for (let i = 0; i < nBurst; i++) {
+        const kk = this.g.t * 9 + i * 1.8;
+        const ox = Math.sin(kk * 2.1) * (26 + burstK * 22);
+        const oy = Math.cos(kk * 1.7) * (10 + burstK * 10);
+        r.circle(demonX + ox, demonY + 44 + oy, 3 + burstK * 4, 'rgba(189,239,255,0.95)');
       }
       ctx.restore();
     }
@@ -1158,8 +1390,10 @@ export class RaftMiniGameScene {
     if (!s.frontDemonActive && s.demonDefeatTimer > 0 && s.demonDefeatSide) {
       const side = s.demonDefeatSide;
       const sign = side === 'left' ? -1 : 1;
-      const x0 = side === 'left' ? 330 : 630;
-      const y0 = 220;
+      const aBoat = this._getBoatAnchors(s, this.g.t);
+      const x0 = aBoat.center.x + aBoat.boat.fwd.x * (aBoat.boat.len * 0.65) + aBoat.boat.right.x * sign * (aBoat.boat.wid * 1.55);
+      const y00 = aBoat.center.y + aBoat.boat.fwd.y * (aBoat.boat.len * 0.65) + aBoat.boat.right.y * sign * (aBoat.boat.wid * 1.55) + 14;
+      const y0 = clamp(y00, TOP_HUD_H + 110, GAME.height - BOTTOM_HUD_H - 120);
       const k = clamp(s.demonDefeatTimer / 0.65, 0, 1);
       const p = 1 - k;
       const x = x0 + sign * (40 + p * 180);
@@ -1167,11 +1401,15 @@ export class RaftMiniGameScene {
       ctx.save();
       const demonImg = this._img('monsterFrontDemon');
       if (demonImg) {
-        const baseW = 140;
+        const baseW = 210;
         const ar = demonImg.height / Math.max(1, demonImg.width);
         const w2 = baseW * (0.9 + p * 0.35);
         const h2 = w2 * ar;
-        this._drawSpriteRotated(demonImg, x, y, w2, h2, 0, 0.32 * k, side === 'left');
+        ctx.save();
+        ctx.shadowColor = 'rgba(170,90,255,0.55)';
+        ctx.shadowBlur = 18;
+        this._drawSpriteRotated(demonImg, x, y, w2, h2, 0, 0.42 * k, side === 'left');
+        ctx.restore();
       } else {
         ctx.globalAlpha = 0.28 * k;
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
@@ -1200,7 +1438,8 @@ export class RaftMiniGameScene {
     ctx.rect(0, riverTop, GAME.width, riverH);
     ctx.clip();
 
-    const mx = cx + Math.sin(t * 1.1) * (10 + near * 8);
+    const boat = this._boatPose(s, t);
+    const mx = boat.tailX + Math.sin(t * 1.1) * (10 + near * 8);
     const my = v.centerY;
     const r0 = v.radius;
 
@@ -1275,9 +1514,8 @@ export class RaftMiniGameScene {
       ctx.restore();
 
       const boat2 = this._boatPose(s, t);
-      const tail = this._rotatePoint(-boat2.drawW * 0.54, 0, boat2.rot);
-      const tailX = boat2.cx + tail.x;
-      const tailY = boat2.cy + tail.y;
+      const tailX = boat2.tailX;
+      const tailY = boat2.tailY;
       ctx.save();
       ctx.globalAlpha = 0.12 + k * 0.22;
       const m = 6 + Math.floor(k * 10);
@@ -1318,13 +1556,76 @@ export class RaftMiniGameScene {
     const jK = s.boatJoltTimer > 0 ? clamp(s.boatJoltTimer / 0.18, 0, 1) : 0;
     const joltX = jK > 0 ? s.boatJoltX * (0.4 + 0.6 * jK) : 0;
     const joltY = jK > 0 ? s.boatJoltY * (0.3 + 0.7 * jK) : 0;
+    const rowK = clamp((s.rowFeedbackTimer || 0) / (TUNING.action.feedbackSeconds || 0.35), 0, 1);
+    const speedK = clamp(s.boatSpeed / Math.max(1, TUNING.boat.speedMax), 0, 1);
+    const waterRatio = clamp(s.waterLevel / TUNING.water.max, 0, 1);
+    const fwdAng = Math.atan2(boat.fwd.y, boat.fwd.x);
 
     ctx.save();
-    ctx.globalAlpha = 0.2;
-    ctx.fillStyle = '#000';
+    ctx.translate(cx + joltX * 0.6, cy + joltY * 0.6 + 10);
+    ctx.rotate(fwdAng);
+    ctx.fillStyle = 'rgba(6,14,24,1)';
+    ctx.save();
+    ctx.globalAlpha = 0.16 + speedK * 0.06;
     ctx.beginPath();
-    ctx.ellipse(cx + joltX * 0.6, cy + hullW * 0.22 + joltY * 0.6, hullH * 0.58, hullH * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, boat.len * 0.82, boat.wid * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.1 + speedK * 0.04;
+    ctx.beginPath();
+    ctx.ellipse(0, 2, boat.len * 0.96, boat.wid * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.06 + speedK * 0.03;
+    ctx.beginPath();
+    ctx.ellipse(0, 4, boat.len * 1.12, boat.wid * 0.88, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.045 + rowK * 0.05;
+    ctx.translate(cx, cy);
+    ctx.rotate(fwdAng);
+    ctx.fillStyle = 'rgba(20,90,130,1)';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, boat.len * 1.35, boat.wid * 1.05, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.18 + rowK * 0.18;
+    ctx.strokeStyle = 'rgba(189,239,255,0.45)';
+    ctx.lineWidth = 2;
+    for (let sgn = -1; sgn <= 1; sgn += 2) {
+      const sx = cx + boat.right.x * sgn * boat.wid * 0.78;
+      const sy = cy + boat.right.y * sgn * boat.wid * 0.78;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, boat.len * 0.28, boat.wid * 0.16, fwdAng, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.12 + speedK * 0.25 + rowK * 0.12;
+    ctx.strokeStyle = 'rgba(189,239,255,0.62)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(boat.bowX + boat.right.x * 6, boat.bowY + boat.right.y * 6, 18, 9, fwdAng, -0.2, Math.PI + 0.2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.08 + speedK * 0.18;
+    const back = { x: -boat.fwd.x, y: -boat.fwd.y };
+    for (let i = 0; i < 5; i++) {
+      const k = t * 2.8 + i * 1.7;
+      const ox = Math.sin(k) * (6 + speedK * 10);
+      const oy = Math.cos(k * 1.2) * (4 + speedK * 8);
+      r.circle(boat.tailX + back.x * (10 + i * 8) + ox, boat.tailY + back.y * (10 + i * 8) + oy, 2 + speedK * 2, 'rgba(189,239,255,0.75)');
+    }
     ctx.restore();
 
     ctx.save();
@@ -1366,42 +1667,36 @@ export class RaftMiniGameScene {
       }
       ctx.restore();
     }
-
-    const waterRatio = clamp(s.waterLevel / TUNING.water.max, 0, 1);
-    if (waterRatio > 0.01) {
-      const innerLen = hullW - 52;
-      const innerWid = hullH - 44;
-      const wl = innerLen * waterRatio;
-      const wx = -hullW / 2 + 26;
-      const wy = -innerWid / 2;
-      r.roundRect(wx, wy, wl, innerWid, 14, 'rgba(30,107,156,0.75)', null, 2);
-      const slosh = (0.8 + waterRatio * 4.2) * Math.sin(t * (4.8 + waterRatio * 4) + s.boatSpeed * 0.06);
-      const edge = wx + wl - 6 + Math.sin(t * 6.2) * (2 + waterRatio * 4) + Math.sin(t * 3.1) * (1.2 + waterRatio * 3) + slosh;
-      ctx.save();
-      ctx.globalAlpha = 0.28 + waterRatio * 0.22;
-      ctx.strokeStyle = 'rgba(189,239,255,0.55)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(edge, wy + 10);
-      ctx.quadraticCurveTo(edge - 5, 0, edge, wy + innerWid - 10);
-      ctx.stroke();
-      ctx.restore();
-    }
+    this._drawBoatWater(r, s, boat, hullW, hullH, waterRatio);
 
     this._drawBoatDamage(r, -hullW / 2, -hullH / 2, hullW, hullH, waterRatio);
     this._drawBoatActions(r, s, hullW, hullH);
     ctx.restore();
 
-    const shaX = cx - 25;
-    const shaY = cy + 25;
-    const tangX = cx + 25;
-    const tangY = cy - 30;
+    this._drawFx(r, 'boat');
+
+    const shaX = cx - boat.fwd.x * 28 - boat.right.x * 18;
+    const shaY = cy - boat.fwd.y * 28 - boat.right.y * 18;
+    const tangX = cx + boat.fwd.x * 30 + boat.right.x * 18;
+    const tangY = cy + boat.fwd.y * 30 + boat.right.y * 18;
+
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.beginPath();
+    ctx.ellipse(shaX, shaY + 22, 14, 8, fwdAng, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(tangX, tangY + 22, 14, 8, fwdAng, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     this._drawShaSeng(r, shaX, shaY, s);
     this._drawTangSeng(r, tangX, tangY, s);
 
     if (waterRatio > 0.82) {
       const blink = 0.4 + 0.6 * Math.sin(t * 10);
-      r.text('积水过高！', cx, cy + 58, {
+      r.text('积水过高！', cx, cy + hullH * 0.42, {
         size: 12,
         color: `rgba(255,122,106,${0.55 + blink * 0.45})`,
         align: 'center',
@@ -1409,6 +1704,85 @@ export class RaftMiniGameScene {
         shadow: 'rgba(0,0,0,0.75)',
       });
     }
+  }
+
+  _drawBoatWater(r, s, boat, hullW, hullH, waterRatio) {
+    if (waterRatio <= 0.01) return;
+    const ctx = r.ctx;
+    const t = this.g.t;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(-hullW * 0.06, hullH * 0.02, hullW * 0.34, hullH * 0.26, -0.6, 0, Math.PI * 2);
+    ctx.clip();
+
+    const slosh = clamp((s.waterSloshTimer || 0) / 0.42, 0, 1);
+    const fillA = 0.16 + waterRatio * 0.46 + slosh * 0.06;
+    const deepA = 0.14 + waterRatio * 0.26 + slosh * 0.04;
+    const pools = 2 + Math.floor(waterRatio * 7);
+    const baseFwd = { x: 0.78, y: -0.62 };
+    const baseRight = { x: -baseFwd.y, y: baseFwd.x };
+    const drift = (1 - waterRatio) * 0.16;
+    const slx = (s.lastRowKey === 'left' ? -1 : s.lastRowKey === 'right' ? 1 : 0) * slosh;
+    const cx0 = -baseFwd.x * hullW * drift - hullW * 0.08 + slx * 10;
+    const cy0 = -baseFwd.y * hullW * drift + hullH * 0.06 + slosh * 6;
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(30,107,156,${fillA})`;
+    for (let i = 0; i < pools; i++) {
+      const n1 = this._noise1D(t * 0.6 + i * 7.1, 333);
+      const n2 = this._noise1D(t * 0.7 + i * 5.3, 337);
+      const along = (-0.06 + waterRatio * 0.18) + n1 * 0.08;
+      const side = n2 * (0.14 + waterRatio * 0.28);
+      const px = cx0 + baseFwd.x * (hullW * along) + baseRight.x * (hullW * side);
+      const py = cy0 + baseFwd.y * (hullW * along) + baseRight.y * (hullW * side);
+      const rx = 14 + waterRatio * 46 + Math.abs(n1) * 10;
+      const ry = 8 + waterRatio * 30 + Math.abs(n2) * 8;
+      ctx.beginPath();
+      ctx.ellipse(px, py, rx, ry, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(20,80,120,${deepA})`;
+    for (let i = 0; i < 3 + Math.floor(waterRatio * 4); i++) {
+      const n1 = this._noise1D(t * 0.9 + i * 9.7, 353);
+      const n2 = this._noise1D(t * 0.8 + i * 8.1, 357);
+      const px = cx0 - hullW * 0.08 + n1 * (10 + waterRatio * 18);
+      const py = cy0 + hullH * 0.02 + n2 * (8 + waterRatio * 16);
+      const rx = 18 + waterRatio * 28;
+      const ry = 10 + waterRatio * 22;
+      ctx.beginPath();
+      ctx.ellipse(px, py, rx, ry, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    const shimmer = 0.5 + 0.5 * Math.sin(t * (5.2 + waterRatio * 4) + s.boatSpeed * 0.06);
+    ctx.save();
+    ctx.globalAlpha = (0.16 + waterRatio * 0.22) * shimmer;
+    ctx.strokeStyle = 'rgba(189,239,255,0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx0 + hullW * (-0.02 + waterRatio * 0.12), cy0 + hullH * 0.02, hullW * (0.14 + waterRatio * 0.16), hullH * (0.08 + waterRatio * 0.12), -0.6, -0.15, Math.PI + 0.2);
+    ctx.stroke();
+    ctx.restore();
+
+    if (waterRatio > 0.82) {
+      const blink = 0.55 + 0.45 * Math.sin(t * 10);
+      ctx.save();
+      ctx.globalAlpha = 0.08 + 0.06 * blink;
+      ctx.fillStyle = 'rgba(255,122,106,1)';
+      ctx.beginPath();
+      ctx.ellipse(-hullW * 0.06, hullH * 0.02, hullW * 0.32, hullH * 0.24, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
   }
 
   _drawBoatActions(r, s, hullW, hullH) {
@@ -1422,14 +1796,14 @@ export class RaftMiniGameScene {
       ctx.strokeStyle = '#b9a47a';
       ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.moveTo(-hullW * 0.12 + k * 6, side * (hullH / 2 - 18));
-      ctx.lineTo(-hullW * 0.26 - k * 10, side * (hullH / 2 + 58 + k * 18));
+      ctx.moveTo(side * (hullW * 0.14 - k * 6), hullH * 0.06 + k * 6);
+      ctx.lineTo(side * (hullW * 0.32 + k * 10), hullH * 0.12 + 42 + k * 10);
       ctx.stroke();
       ctx.strokeStyle = '#7a6b52';
       ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.moveTo(-hullW * 0.26 - k * 10, side * (hullH / 2 + 58 + k * 18));
-      ctx.lineTo(-hullW * 0.3 - k * 14, side * (hullH / 2 + 82 + k * 24));
+      ctx.moveTo(side * (hullW * 0.32 + k * 10), hullH * 0.12 + 42 + k * 10);
+      ctx.lineTo(side * (hullW * 0.38 + k * 14), hullH * 0.12 + 62 + k * 16);
       ctx.stroke();
       ctx.restore();
     }
@@ -1497,8 +1871,8 @@ export class RaftMiniGameScene {
       const h = w * (img.height / Math.max(1, img.width));
       const baseY = 44;
       ctx.save();
-      ctx.globalAlpha = 0.22;
-      r.circle(0, baseY - 2, 14, 'rgba(0,0,0,0.4)');
+      ctx.globalAlpha = 0.14;
+      r.circle(0, baseY - 2, 12, 'rgba(0,0,0,0.4)');
       ctx.restore();
       ctx.drawImage(img, -w / 2, -h + baseY, w, h);
       ctx.restore();
@@ -1553,8 +1927,8 @@ export class RaftMiniGameScene {
       const h = w * (img.height / Math.max(1, img.width));
       const baseY = 44;
       ctx.save();
-      ctx.globalAlpha = 0.22;
-      r.circle(0, baseY - 2, 14, 'rgba(0,0,0,0.4)');
+      ctx.globalAlpha = 0.14;
+      r.circle(0, baseY - 2, 12, 'rgba(0,0,0,0.4)');
       ctx.restore();
       ctx.drawImage(img, -w / 2, -h + baseY, w, h);
 

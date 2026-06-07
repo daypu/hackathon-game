@@ -2130,98 +2130,200 @@ export class RaftMiniGameScene {
     r.text('按 P / Esc 继续', GAME.width / 2, GAME.height / 2 + 34, { size: 16, color: '#cfc6e8', align: 'center', weight: '700' });
   }
 
+  _drawSceneImageBackdrop(r, imgKeys, overlay = 'rgba(5,4,10,0.55)', vignette = 'rgba(0,0,0,0.55)') {
+    const ctx = r.ctx;
+    const W = GAME.width;
+    const H = GAME.height;
+    let img = null;
+    for (const k of imgKeys) {
+      img = this._img(k);
+      if (img) break;
+    }
+    if (img) this._drawImageCover(r, img, 0, 0, W, H);
+    else r.vgrad(0, 0, W, H, PAL.sand0, PAL.sand1);
+
+    r.rect(0, 0, W, H, overlay);
+    ctx.save();
+    const vg = ctx.createRadialGradient(W / 2, H / 2, 150, W / 2, H / 2, Math.max(W, H) * 0.72);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(0.6, 'rgba(0,0,0,0.08)');
+    vg.addColorStop(1, vignette);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  _drawMiniBar(r, x, y, w, h, ratio, color) {
+    r.roundRect(x, y, w, h, Math.max(2, h / 2), 'rgba(10,8,18,0.75)', 'rgba(255,255,255,0.14)', 1);
+    r.roundRect(x + 2, y + 2, (w - 4) * clamp(ratio, 0, 1), h - 4, Math.max(2, (h - 4) / 2), color);
+  }
+
+  _drawStatRow(r, x, y, label, value, ratio, color) {
+    r.text(label, x, y, { size: 13, color: '#9fd0ff', weight: '900' });
+    r.text(value, x + 300, y, { size: 13, color: '#fff2b0', align: 'right', weight: '900', shadow: 'rgba(0,0,0,0.65)' });
+    this._drawMiniBar(r, x, y + 10, 300, 10, ratio, color);
+  }
+
+  _drawIntroControlCard(r, x, y, key, text) {
+    r.roundRect(x, y, 308, 52, 14, 'rgba(5,4,10,0.52)', 'rgba(74,163,255,0.18)', 1);
+    r.roundRect(x + 10, y + 10, 86, 32, 12, 'rgba(10,8,18,0.68)', 'rgba(255,206,84,0.22)', 1);
+    r.text(key, x + 53, y + 32, { size: 15, color: '#fff2b0', align: 'center', weight: '900' });
+    r.text(text, x + 108, y + 32, { size: 14, color: '#cfc6e8', align: 'left', weight: '900' });
+  }
+
   _drawFailed(r) {
-    r.rect(0, 0, GAME.width, GAME.height, 'rgba(5,4,10,0.7)');
+    const ctx = r.ctx;
+    const W = GAME.width;
+    const H = GAME.height;
+    this._drawSceneImageBackdrop(r, ['bgResultFail', 'bgTitle', 'bgMain'], 'rgba(6,4,10,0.58)', 'rgba(0,0,0,0.68)');
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    r.rect(0, 0, W, H, 'rgba(120,30,60,0.35)');
+    ctx.restore();
+
     const reason = this.result?.reason;
     const title = reason === 'monster' ? '水怪追上破船！' : reason === 'water' ? '破船沉没了！' : '唐僧惊慌过度！';
-    r.text(title, GAME.width / 2, GAME.height / 2 - 44, { size: 44, color: '#ff7a6a', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
+    r.text(title, W / 2, 86, { size: 46, color: '#ff7a6a', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.85)' });
+
     const tip = reason === 'monster'
       ? '建议：A/D 要交替，不要一直按同一边。'
       : reason === 'water'
         ? '建议：水浪命中后立刻连点 Space 舀水。'
         : '建议：出现 1/2 序列时优先完成安抚。';
-    r.text(tip, GAME.width / 2, GAME.height / 2 + 16, { size: 14, color: '#fff2b0', align: 'center', weight: '800' });
     const s = this.state;
-    const lines = [
-      `水怪距离：${Math.round(s.monsterDistance)} / ${TUNING.monster.startDistance}`,
-      `进水值：${Math.round(s.waterLevel)} / ${TUNING.water.max}`,
-      `惊慌值：${Math.round(s.monkFear)} / ${TUNING.fear.max}`,
-    ];
-    lines.forEach((ln, i) => {
-      r.text(ln, GAME.width / 2, GAME.height / 2 + 42 + i * 18, { size: 13, color: '#cfc6e8', align: 'center', weight: '800' });
-    });
+    const px = W / 2 - 330;
+    const py = 126;
+    const pw = 660;
+    const ph = 330;
+    r.roundRect(px, py, pw, ph, 18, 'rgba(10,8,18,0.78)', 'rgba(255,122,106,0.55)', 2);
+    r.roundRect(px + 10, py + 10, pw - 20, ph - 20, 14, null, 'rgba(255,255,255,0.14)', 1);
+
+    r.text('失败复盘', W / 2, py + 50, { size: 18, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
+    r.roundRect(px + 22, py + 72, pw - 44, 64, 14, 'rgba(120,30,60,0.18)', 'rgba(255,122,106,0.35)', 1);
+    r.text(tip, W / 2, py + 110, { size: 15, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.65)' });
+
+    const distText = `${Math.round(s.monsterDistance)} / ${TUNING.monster.startDistance}`;
+    const waterText = `${Math.round(s.waterLevel)} / ${TUNING.water.max}`;
+    const fearText = `${Math.round(s.monkFear)} / ${TUNING.fear.max}`;
+    this._drawStatRow(r, px + 38, py + 160, '水怪距离', distText, clamp(s.monsterDistance / TUNING.monster.startDistance, 0, 1), '#ff7a6a');
+    this._drawStatRow(r, px + 38, py + 206, '进水值', waterText, clamp(s.waterLevel / TUNING.water.max, 0, 1), '#4aa3ff');
+    this._drawStatRow(r, px + 38, py + 252, '惊慌值', fearText, clamp(s.monkFear / TUNING.fear.max, 0, 1), '#ffce54');
+
     const st = s.stats || {};
-    const perf = `最大连击 ${st.maxCombo || 0}｜舀水 ${st.bails || 0}｜安抚 ${st.dialogueSuccess || 0}｜击退 ${st.demonHit || 0}`;
-    r.text(perf, GAME.width / 2, GAME.height / 2 + 100, { size: 12, color: '#9a90b8', align: 'center', weight: '800' });
-    r.text('Space / Enter：重新挑战', GAME.width / 2, GAME.height / 2 + 136, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
-    r.text('Esc：返回开始界面', GAME.width / 2, GAME.height / 2 + 162, { size: 14, color: '#cfc6e8', align: 'center', weight: '700' });
+    const perf = [
+      `最大连击：${st.maxCombo || 0}`,
+      `舀水次数：${st.bails || 0}`,
+      `成功安抚：${st.dialogueSuccess || 0}`,
+      `击退妖怪：${st.demonHit || 0}`,
+    ];
+    const x0 = px + 360;
+    const y0 = py + 174;
+    for (let i = 0; i < perf.length; i++) {
+      r.text(perf[i], x0, y0 + i * 22, { size: 12, color: '#cfc6e8', align: 'left', weight: '800' });
+    }
+
+    r.text('Space / Enter：重新挑战', W / 2, H - 68, { size: 18, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
+    r.text('Esc：返回开始界面', W / 2, H - 40, { size: 14, color: '#cfc6e8', align: 'center', weight: '800', shadow: 'rgba(0,0,0,0.7)' });
   }
 
   _drawSuccess(r) {
-    r.rect(0, 0, GAME.width, GAME.height, 'rgba(5,4,10,0.7)');
-    r.text('冲出流沙河！', GAME.width / 2, GAME.height / 2 - 62, { size: 44, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
+    const ctx = r.ctx;
+    const W = GAME.width;
+    const H = GAME.height;
+    this._drawSceneImageBackdrop(r, ['bgResultSuccess', 'bgTitle', 'bgMain'], 'rgba(5,4,16,0.52)', 'rgba(0,0,0,0.62)');
+    ctx.save();
+    const glow = ctx.createRadialGradient(W / 2, 80, 20, W / 2, 80, 340);
+    glow.addColorStop(0, 'rgba(255,206,84,0.25)');
+    glow.addColorStop(0.5, 'rgba(255,206,84,0.08)');
+    glow.addColorStop(1, 'rgba(255,206,84,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    r.text('冲出流沙河！', W / 2, 86, { size: 46, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.85)' });
     const s = this.state;
-    r.text('展示面板', GAME.width / 2, GAME.height / 2 - 18, { size: 14, color: '#cfc6e8', align: 'center', weight: '900' });
     const score = this.result?.score ?? this._computeScore();
     const rank = this.result?.rank ?? this._getRank(score);
-    r.text(`评分 ${score}   ${rank.grade} · ${rank.title}`, GAME.width / 2, GAME.height / 2 + 12, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.65)' });
-    const lines = [
-      `剩余距离：${Math.round(s.monsterDistance)} / ${TUNING.monster.startDistance}`,
-      `船舱进水：${Math.round(s.waterLevel)} / ${TUNING.water.max}`,
-      `唐僧惊慌：${Math.round(s.monkFear)} / ${TUNING.fear.max}`,
-    ];
-    lines.forEach((ln, i) => {
-      r.text(ln, GAME.width / 2, GAME.height / 2 + 40 + i * 18, { size: 13, color: '#cfc6e8', align: 'center', weight: '800' });
-    });
+    const px = W / 2 - 330;
+    const py = 126;
+    const pw = 660;
+    const ph = 350;
+    r.roundRect(px, py, pw, ph, 18, 'rgba(10,8,18,0.76)', 'rgba(255,206,84,0.55)', 2);
+    r.roundRect(px + 10, py + 10, pw - 20, ph - 20, 14, null, 'rgba(255,255,255,0.14)', 1);
+
+    r.text(`评分 ${score}`, W / 2, py + 62, { size: 18, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
+    r.text(rank.grade, W / 2, py + 126, { size: 64, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
+    r.text(rank.title, W / 2, py + 164, { size: 16, color: '#cfc6e8', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.65)' });
+
+    r.text('破船冲出妖浪，师徒暂得安宁。', W / 2, py + 206, { size: 14, color: '#cfc6e8', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.6)' });
+
+    const distText = `${Math.round(s.monsterDistance)} / ${TUNING.monster.startDistance}`;
+    const waterText = `${Math.round(s.waterLevel)} / ${TUNING.water.max}`;
+    const fearText = `${Math.round(s.monkFear)} / ${TUNING.fear.max}`;
+    this._drawStatRow(r, px + 38, py + 240, '剩余水怪距离', distText, clamp(s.monsterDistance / TUNING.monster.startDistance, 0, 1), '#7ed957');
+    this._drawStatRow(r, px + 38, py + 286, '最终进水值', waterText, clamp(s.waterLevel / TUNING.water.max, 0, 1), '#4aa3ff');
+    this._drawStatRow(r, px + 38, py + 332, '唐僧惊慌值', fearText, clamp(s.monkFear / TUNING.fear.max, 0, 1), '#ffce54');
+
     const st = s.stats || {};
     const perf = [
-      `最大划船连击：${st.maxCombo || 0}（同边 ${st.sameKey || 0}）`,
-      `成功安抚次数：${st.dialogueSuccess || 0}（失败 ${st.dialogueFail || 0}）`,
-      `击退妖怪次数：${st.demonHit || 0}（失误 ${st.demonMiss || 0}）`,
-      `舀水次数：${st.bails || 0}（水浪命中 ${st.waveHits || 0}）`,
+      `最大划船连击：${st.maxCombo || 0}`,
+      `舀水次数：${st.bails || 0}`,
+      `成功安抚：${st.dialogueSuccess || 0}`,
+      `击退妖怪：${st.demonHit || 0}`,
+      `水浪命中：${st.waveHits || 0}`,
     ];
-    perf.forEach((ln, i) => {
-      r.text(ln, GAME.width / 2, GAME.height / 2 + 100 + i * 18, { size: 12, color: '#9a90b8', align: 'center', weight: '800' });
-    });
-    r.text('Space / Enter：重新挑战', GAME.width / 2, GAME.height / 2 + 182, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
-    r.text('Esc：返回开始界面', GAME.width / 2, GAME.height / 2 + 208, { size: 14, color: '#cfc6e8', align: 'center', weight: '700' });
+    const x0 = px + pw - 38;
+    const y0 = py + 64;
+    for (let i = 0; i < perf.length; i++) {
+      r.text(perf[i], x0, y0 + i * 22, { size: 12, color: '#cfc6e8', align: 'right', weight: '800' });
+    }
+
+    r.text('Space / Enter：重新挑战', W / 2, H - 68, { size: 18, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
+    r.text('Esc：返回开始界面', W / 2, H - 40, { size: 14, color: '#cfc6e8', align: 'center', weight: '800', shadow: 'rgba(0,0,0,0.7)' });
   }
 
   _drawIntro(r) {
     const ctx = r.ctx;
-    r.rect(0, 0, GAME.width, GAME.height, 'rgba(5,4,10,0.62)');
+    const W = GAME.width;
+    const H = GAME.height;
+    this._drawSceneImageBackdrop(r, ['bgTitle', 'bgMain'], 'rgba(5,4,10,0.68)', 'rgba(0,0,0,0.68)');
 
-    const w = 720;
-    const h = 360;
-    const x = GAME.width / 2 - w / 2;
-    const y = 88;
-    r.roundRect(x, y, w, h, 16, 'rgba(10,8,18,0.92)', '#ffce54', 3);
-    r.roundRect(x + 10, y + 10, w - 20, h - 20, 12, null, 'rgba(255,255,255,0.14)', 1);
+    const w = 760;
+    const h = 388;
+    const x = W / 2 - w / 2;
+    const y = 76;
+    r.roundRect(x, y, w, h, 18, 'rgba(10,8,18,0.82)', 'rgba(255,206,84,0.55)', 2);
+    r.roundRect(x + 10, y + 10, w - 20, h - 20, 14, null, 'rgba(255,255,255,0.14)', 1);
 
-    r.text('流沙河：破船惊魂', GAME.width / 2, y + 56, { size: 34, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
-    r.text(`目标：撑过 ${TUNING.roundSeconds} 秒，不让水怪追上！`, GAME.width / 2, y + 96, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
+    r.text('任务简报', W / 2, y + 56, { size: 26, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
+    r.text('撑过 30 秒，不让水怪追上！', W / 2, y + 92, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.6)' });
 
-    const left = x + 92;
-    const top = y + 140;
-    const items = [
-      ['A / D', '交替划船（核心）'],
-      ['Space', '连点舀水'],
-      ['1 / 2', '顺序安抚'],
-      ['Q / E', '击退前方妖怪'],
-    ];
-    items.forEach((it, i) => {
-      const iy = top + i * 42;
-      r.roundRect(left, iy - 20, 100, 34, 10, 'rgba(20,14,28,0.85)', 'rgba(255,255,255,0.14)', 1);
-      r.text(it[0], left + 50, iy + 2, { size: 16, color: '#fff2b0', align: 'center', weight: '900' });
-      r.text(it[1], left + 122, iy + 2, { size: 15, color: '#cfc6e8', align: 'left', weight: '800' });
+    const cx0 = x + 62;
+    const cy0 = y + 128;
+    this._drawIntroControlCard(r, cx0, cy0, 'A / D', '交替划船，拉开水怪距离');
+    this._drawIntroControlCard(r, cx0 + 328, cy0, 'Space', '舀出船舱积水');
+    this._drawIntroControlCard(r, cx0, cy0 + 64, '1 / 2', '按序列安抚唐僧');
+    this._drawIntroControlCard(r, cx0 + 328, cy0 + 64, 'Q / E', '击退前方妖怪');
+
+    r.roundRect(x + 62, y + 268, w - 124, 66, 16, 'rgba(74,163,255,0.12)', 'rgba(74,163,255,0.28)', 1);
+    r.text('优先级：水怪极近先划船｜进水过高先舀水｜惊慌过高先安抚', W / 2, y + 304, {
+      size: 14,
+      color: '#cfc6e8',
+      align: 'center',
+      weight: '900',
+      shadow: 'rgba(0,0,0,0.6)',
     });
 
-    r.text('提示：先拉开水怪距离，再处理危机！', GAME.width / 2, y + h - 72, { size: 15, color: '#cfc6e8', align: 'center', weight: '900' });
     const remain = Math.ceil(this.introTimer);
     const blink = 0.45 + 0.55 * Math.sin(this.g.t * 6);
     ctx.save();
+    ctx.globalAlpha = 0.5 + blink * 0.5;
+    r.text(`${remain}`, x + w - 86, y + h - 86, { size: 58, color: '#ffce54', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.8)' });
+    ctx.restore();
+    r.text('秒后开始', x + w - 86, y + h - 42, { size: 14, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.65)' });
+    ctx.save();
     ctx.globalAlpha = 0.45 + blink * 0.55;
-    r.text(`${remain} 秒后开始 / 按 Space 立即开始`, GAME.width / 2, y + h - 34, { size: 16, color: '#fff2b0', align: 'center', weight: '900', shadow: 'rgba(0,0,0,0.7)' });
+    r.text('Space 立即开始', x + 108, y + h - 44, { size: 16, color: '#fff2b0', align: 'left', weight: '900', shadow: 'rgba(0,0,0,0.75)' });
     ctx.restore();
   }
 

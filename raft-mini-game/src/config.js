@@ -29,6 +29,9 @@ export const PAL = {
 
 export const ASSETS = {
   bgMain: '/assets/bg/bg_liusha_river_main.png',
+  bgTitle: '/assets/bg/bg_title_liusha.png',
+  bgResultSuccess: '/assets/bg/bg_result_success.png',
+  bgResultFail: '/assets/bg/bg_result_fail.png',
   boat: '/assets/boat/boat_broken_ferry.png',
   shasengIdle: '/assets/characters/shaseng_idle.png',
   shasengAction: '/assets/characters/shaseng_action.png',

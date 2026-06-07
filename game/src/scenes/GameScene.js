@@ -14,6 +14,7 @@ class GameScene extends Phaser.Scene {
         this.startTime = this.time.now;
         this.currentRole = 'wukong';  // 当前控制的角色：'wukong' | 'bajie'
         this.bossSpawned = false;     // 铁扇公主是否已入场
+        this.bossEntering = false;    // 是否正在进 BossScene（防重入，scene 重启时必须复位！）
         this.bossSprite = null;       // 铁扇公主在跑酷场景中的视觉
         this.bossEnterX = GAME_CONFIG.WIDTH - 150;  // 铁扇公主最终停留位置
 
@@ -330,15 +331,15 @@ class GameScene extends Phaser.Scene {
             onComplete: () => tip.destroy(),
         });
 
-        // 视觉：地面上一个紫红色身影从右边走过来，停在 bossEnterX
+        // 视觉：铁扇公主像素图从右边走过来，停在 bossEnterX
         const groundY = GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_HEIGHT;
-        this.bossSprite = this.add.rectangle(
-            GAME_CONFIG.WIDTH + 80, groundY - 70, 60, 130, 0xB03060
+        const bossSize = 140;
+        this.bossSprite = this.add.image(
+            GAME_CONFIG.WIDTH + 80, groundY, 'tieshangongzhu'
         );
-        const bossHead = this.add.circle(
-            GAME_CONFIG.WIDTH + 80, groundY - 145, 22, 0xFFE0BD
-        );
-        this.bossDecorations = [this.bossSprite, bossHead];
+        this.bossSprite.setDisplaySize(bossSize, bossSize);
+        this.bossSprite.setOrigin(0.5, 1.0);  // 底部对齐
+        this.bossDecorations = [this.bossSprite];
 
         // 走过来：数组 targets 不能用 `x: {from, to}`（Phaser 数组陷阱）
         // → 每个 decoration 独立 tween 到各自的目标 x
@@ -355,13 +356,12 @@ class GameScene extends Phaser.Scene {
                 onComplete: onAllDone,
             });
         };
-        // 只用 bossSprite 的回调触发（避免两次进 Boss 战）
+        // bossSprite 回调触发 Boss 战
         walkBoss(this.bossSprite, () => {
             console.log('[GameScene] 铁扇公主已就位（对称对峙）→ 触发 Boss 战');
             // 对峙 0.7s 后切场景，让玩家看清"两人对望"
             this.time.delayedCall(700, () => this.enterBossFight());
         });
-        walkBoss(bossHead, null);
     }
 
     /**

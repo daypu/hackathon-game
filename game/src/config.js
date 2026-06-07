@@ -13,8 +13,8 @@ const GAME_CONFIG = {
 
     // 角色参数
     PLAYER_START_X: 200,     // 角色起始 X 位置
-    PLAYER_SIZE: 40,         // 角色尺寸（悟空）
-    PLAYER_BAJIE_SIZE: 46,   // 八戒尺寸（更大更粗）
+    PLAYER_SIZE: 60,         // 角色尺寸（悟空）—— CP6.5+ 放大（背景占比 ~11%）
+    PLAYER_BAJIE_SIZE: 68,   // 八戒尺寸（更大更粗）—— CP6.5+ 放大
     JUMP_POWER: 700,         // 跳跃初速度（越大跳越高）
     JUMP_POWER_WUKONG: 800,  // 悟空跳更高
     JUMP_POWER_BAJIE: 650,   // 八戒跳稍低

@@ -274,3 +274,106 @@ cp wukong.png wukong.bak.png && python3 process.py
 - kafka CP6.5 反馈："光圈也去掉吧，没有用"
 - 教训：**自己的"防御性设计"，用户不一定需要**。先给最简版让用户用，再根据真实反馈加特征。**少即是多**
 
+
+
+---
+
+## CP7 阶段技术发现（会话 10 - 手机端 + 角色穿模）
+
+### 移动端 viewport 配置（不踩坑版）
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+```
+- `viewport-fit=cover` —— iOS 全面屏才能用满，不留状态栏黑边
+- `user-scalable=no` + `maximum-scale=1.0` —— 防止双指放大顶歪布局（游戏页面必加）
+- `apple-mobile-web-app-capable` —— 加到主屏后启动是无浏览器 chrome 的全屏
+
+### iOS Safari 的 100vh 陷阱
+- `height: 100vh` 在 iOS Safari 上算的是**地址栏完全隐藏时**的高度
+- 实际地址栏会出现 → 画面高度 > 可视区 → **下半部分被截掉**
+- 解法：用 `position:fixed + top:0 + left:0 + width:100% + height:100%` 撑满**实际可视区**
+- body 加 `position:fixed` 还能防 iOS 滑动顶起整个页面
+
+### 移动端 touch 配置（防误操作）
+```css
+html, body {
+    touch-action: none;            /* 禁双指缩放 / 滑动滚动 */
+    overscroll-behavior: none;     /* 禁顶部下拉刷新 */
+    -webkit-user-select: none;     /* 禁长按选中 */
+    -webkit-touch-callout: none;   /* 禁长按弹出菜单 */
+    -webkit-tap-highlight-color: transparent;  /* 禁点击高亮闪一下 */
+}
+```
+- 游戏页面这五条建议**全配齐**，否则用户长按、双指、下拉都会触发奇怪行为
+
+### 网页不能强制横屏（重要）
+- iOS Safari **完全不支持** Screen Orientation API（`screen.orientation.lock()`）
+- Android Chrome 支持，但必须在**全屏模式**下才能调用
+- 唯一靠谱方案：**竖屏时显示遮罩，让用户手动旋转**
+```css
+@media (orientation: portrait) and (max-width: 900px) {
+    #rotate-hint { display: flex; }
+}
+```
+- 遮罩盖一层 + 一个 📱 图标 + 动画旋转 + "请横屏游玩" 文字
+
+### dev_server 必须显式禁缓存
+Python `SimpleHTTPRequestHandler` **默认带 Last-Modified 头**，浏览器会用 `If-Modified-Since` 协商缓存。改了 PNG/JS 但响应 304 → 浏览器用旧文件。开发期必须显式禁掉：
+```python
+def end_headers(self):
+    self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+    self.send_header('Pragma', 'no-cache')
+    self.send_header('Expires', '0')
+    super().end_headers()
+```
+**注意**：修改 dev_server.py 后**必须重启 dev_server**（Ctrl+C 后 `python3 dev_server.py`），HTTP server 不会自动 reload 配置
+
+### Phaser scene 实例复用陷阱
+- Phaser **不是**每次 `scene.start()` 都 new 一个新 scene 对象
+- scene 实例**全程复用**，只重新调用 `init()` + `create()`
+- 所有 instance 属性（`this.xxx`）如果不在 `create()` 里**显式重置**，会保留上一局的值
+- **金律**：scene 的 `create()` 必须像 React 的 `useState` 初始值一样，列全所有 state
+- 本会话 bug：`this.bossEntering = true` 残留，导致下一局进不了 Boss 战
+
+### 手机端测试工作流（局域网 IP 法）
+```bash
+# 1. 拿 Mac 局域网 IP
+ifconfig | grep "inet " | grep -v 127.0.0.1
+# → inet 10.197.226.82  (热点)
+# → inet 192.168.1.5    (WiFi)
+
+# 2. 确认 dev_server 监听 *:port（不是 127.0.0.1）
+lsof -i :8765
+# COMMAND   PID  USER  ... NAME
+# python3   ... LISTEN  *:ultraseek-http  ← 星号才行
+
+# 3. 手机访问 http://<Mac IP>:<port>
+```
+- **前置条件**：手机和 Mac 同 WiFi/同热点
+- **换网络后 IP 会变**，必须重新 `ifconfig`
+- 公司/校园网常做"客户端隔离"，互访不通 → 开手机热点 Mac 连热点
+
+### 3 次失败立即上 debug 工具（深刻教训）
+本会话角色脚陷地问题，我连续猜了 4 次方案都没解决：
+1. body 高度从 0.85 改 1.0
+2. setOrigin 改试各种值
+3. PIL 裁切 PNG 透明 padding
+4. 删 setOrigin 改回去
+**全部失败**。kafka 一句"为什么小妖怪不陷地"才打破我的猜测循环。
+
+**应该的流程**：
+- 第 1 次方案失败 → 验证假设是否正确
+- 第 2 次方案失败 → 立即开 DEBUG_PHYSICS=true 看绿框
+- **绿框直接告诉你真相**：body 在哪、size 多大、是否陷地
+- 不要靠"猜+改+刷新+看"的循环 —— 浪费用户时间 + 烧信任额度
+
+### kafka 对比式提问的威力
+> "为什么小妖怪不陷地，悟空八戒却陷地"
+- 这种**对比式问题**直接指向问题边界
+- 比"角色看起来怪怪的，帮我修一下"精确 100 倍
+- 当 user 给出对比式金句时，**优先列出两个实例的所有差异**，根因在差异里
+- 本案差异：rectangle vs image / 代码画 vs PNG / 100% 实心 vs 可能有半透明边
+

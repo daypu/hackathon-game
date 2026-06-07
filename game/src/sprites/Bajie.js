@@ -19,8 +19,11 @@ class Bajie extends Player {
         // 像素图替代粉紫圆（保持 hitbox 尺寸）
         this.visual = this.scene.add.image(this.x, this.y, 'bajie');
         this.visual.setDisplaySize(this.size, this.size);
+        // 关键：setOrigin(0.5, 1.0) 让图片底部作为锚点 → 图片底边 = 物理体底边 = 地面
+        this.visual.setOrigin(0.5, 1.0);
         this.scene.physics.add.existing(this.visual);
-        this.visual.body.setSize(this.size * 0.75, this.size * 0.85);  // hitbox 略小，体验宽容
+        // body 满高度，宽度 0.75 保留命中宽容
+        this.visual.body.setSize(this.size * 0.75, this.size);
         this.visual.body.setCollideWorldBounds(true);
     }
 

@@ -590,3 +590,134 @@ work/game/
 4. **会话 8 加的"光环"被会话 9 删了**：教训 —— 不要急着加"防御性的额外特征"。kafka 看到原素材就明白了，光环只是我自己的过度设计。**少即是多**
 
 ---
+
+## 会话 10 - 2026-06-07（CP7 手机端适配 + 关键 bug 修复 + 角色穿模长跑）
+
+### 本会话三条主线
+1. **kafka 手机端测试需求** → 横屏适配（成功）
+2. **Boss 战失败后无法再进 Boss 战 bug** → 修复（一次到位）
+3. **角色脚陷地问题** → 4 次尝试，根因仍未完全确认，待 kafka 强刷后看 debug 物理框确认
+
+---
+
+### 主线 1：手机端适配（CP7.0）
+
+**kafka 流程**：
+1. 问"现在游戏能直接在手机端上运行吗" → 我回答：技术上能，3 个坑（键盘失效 / localhost 访问 / 横屏触感）
+2. kafka 决定测试 → 我教 `ifconfig | grep "inet "` 拿局域网 IP（10.135.45.145，后换热点变 10.197.226.82）
+3. kafka 用手机访问 → 反馈"没有自动横屏"
+4. 我科普网页不能强制横屏的浏览器限制 → 提议加遮罩提示
+5. kafka 反馈"横过来之后下面截掉了" → **真正紧急的问题**
+
+**修复实现**（`game/index.html` 完全重写 head）：
+- viewport：加 `viewport-fit=cover, user-scalable=no, maximum-scale=1.0`
+- 加 iOS Web App meta：`apple-mobile-web-app-capable` + `status-bar-style=black-translucent`
+- body：从 `height:100vh` 改 `position:fixed + height:100%`（避免 iOS 地址栏吃高度）
+- body：加 `touch-action:none, overscroll-behavior:none, user-select:none, touch-callout:none, tap-highlight:transparent`
+- 加 `#rotate-hint` 遮罩（竖屏自动显示，CSS media query `(orientation: portrait)`）
+- 旋转动画：📱 +24px 大字 + `@keyframes rotateHint`
+
+**dev_server 同步禁缓存**（kafka 后续修角色位置发现"缓存"嫌疑）：
+- end_headers 加 `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` + `Pragma: no-cache` + `Expires: 0`
+- 这条改完**需要重启 dev_server** 才生效
+
+**关键经验**：
+- 移动端 `100vh` 是个 trap：iOS Safari 算的是地址栏完全隐藏时的高度
+- 用 `position:fixed + height:100%` 才能稳定撑满可视区
+- 网页不能强制锁横屏：iOS Safari 完全不支持 Screen Orientation API
+- 必须用 CSS media query + 遮罩提示用户手动旋转
+
+---
+
+### 主线 2：Boss 战失败后无法再进 Boss 战（一次修复）
+
+**kafka 反馈**：打铁扇公主失败后不能再次进入 Boss 战
+
+**根因**（一次定位）：
+- `GameScene.enterBossFight` 有防重入锁 `if (this.bossEntering) return;`
+- 但 `create()` 没有重置 `this.bossEntering`（只重置了 `isGameOver` 和 `bossSpawned`）
+- Phaser 的 scene **实例复用**：`scene.start` 重启时只调用 `create()`，不重新 new 对象
+- 第一次进 Boss 战 → `bossEntering = true` → 残留
+- ResultScene → 点"再来一次" → GameScene.create() 跑了 → bossEntering 仍是 true
+- 跑酷到 30s → `enterBossFight()` 被调用 → `if (true) return;` 直接退出 → **永远进不了 Boss 战**
+
+**修复**：`GameScene.js:17` 加 `this.bossEntering = false;`
+
+**关键教训**：**Phaser scene 实例属性必须全部在 create() 里显式初始化**，因为 scene 是复用的，不是每次都 new
+
+---
+
+### 主线 3：角色脚陷地问题（4 次尝试，未确认根因）
+
+**kafka 反馈递进**：
+1. "悟空和八戒可以大一些，现在太小了" → 我把 PLAYER_SIZE 40→60 / PLAYER_BAJIE_SIZE 46→68
+2. "感觉没踩在地面上，穿模到地面下了"
+3. "你能把悟空/八戒向上调一点吗？哪个参数是管这个的呀？"
+4. "改完后保存自动生效吗？" → 我科普强刷
+5. "我改到 0.97 也不管用"
+6. "还是陷在地面下的，你可以思考下为什么小妖怪是不陷地的，但你的悟空和八戒却是陷地的"
+
+**4 次错误尝试**：
+| # | 方案 | 结果 |
+|---|---|---|
+| 1 | `body.setSize(size, size * 0.85)` 配 `setOrigin(0.5, 0.92)` | 没用 |
+| 2 | body 高 0.8 → 1.0（满高） | 仍陷地 |
+| 3 | `setOrigin` Y 从 0.92 改 0.2 → 0.97 试错 | 没用（kafka 反馈方向理解可能反了；我也错认为 setOrigin 在 Arcade body 下无效，**这个论断本身需要验证**） |
+| 4 | PIL 裁掉 PNG 透明 padding（wukong 961×961→898×925，bajie 1045×1045→**1005×899** 去掉头顶 126px 透明） | **仍陷地**（kafka 强刷确认） |
+
+**kafka 一句话点醒**："为什么小妖怪不陷地，悟空八戒却陷地"
+- 小妖怪是 `scene.add.rectangle(x, y, w, h, color)` 代码画的矩形 → 像素 100% 是身体
+- 悟空八戒是 PNG image → 即使裁掉透明 padding，可能仍有半透明像素 / 渲染锚点错位 / body offset 计算错
+
+**当前状态（未完成）**：
+- 已开 `DEBUG_PHYSICS: true`（config.js:110）让物理 body 显示绿框
+- 已禁掉 dev_server 缓存（需要重启 dev_server 才生效）
+- 等 kafka **重启 dev_server + 强刷浏览器 + 描述/截图绿框 vs 角色脚的相对位置**
+- 根据 debug 框位置才能继续诊断（3 种可能：缓存未清 / PIL 裁切阈值不够严 / body 尺寸算错）
+
+**关键反思**：
+- 应该 **CP6 引入像素图时就开 DEBUG_PHYSICS 验证**，不该等踩这么多坑才开
+- **3 次失败协议触发**：连续 3 次方案都没解决，应该立即上 debug 物理框 + 暂停猜测式调参
+- **kafka 的"为什么 X 不陷地、Y 陷地"是金句**：对比已工作的实例 vs 不工作的实例，根因隐藏在差异里
+- **本会话 kafka 多次切模型**（gpt-5.5 ↔ glm-5.1），可能是因为我的诊断不够锐利导致失去信任
+
+---
+
+### 修改的文件（本会话）
+**新增/编辑**：
+- `game/index.html`：head 完全重写（viewport-fit / position:fixed / touch-action / rotate-hint 遮罩）
+- `game/dev_server.py`：end_headers 加禁缓存 3 行
+- `game/src/scenes/GameScene.js`：create() 加 `this.bossEntering = false;`（line 17）
+- `game/src/sprites/Wukong.js`：删 setOrigin，body 满高（多次反复改）
+- `game/src/sprites/Bajie.js`：同上
+- `game/src/sprites/BossPlayer.js`：drawWukong/drawBajie 删 setOrigin
+- `game/src/config.js`：PLAYER_SIZE 40→60、PLAYER_BAJIE_SIZE 46→68、DEBUG_PHYSICS false→true
+- `game/assets/images/wukong.png`：PIL 裁切透明 padding（961×961→898×925）
+- `game/assets/images/bajie.png`：PIL 裁切透明 padding（1045×1045→1005×899，去头顶 126px）
+
+**新增备份**：
+- `game/assets/images/wukong.padding.bak.png`（CP6.5 白底清除版，未裁切）
+- `game/assets/images/bajie.padding.bak.png`（同上）
+
+---
+
+### 当前状态
+- ✅ CP7.0 手机端横屏适配完成（kafka 反馈横屏画面满）
+- ✅ Boss 战重启 bug 修复（kafka 待验收）
+- ⏳ **角色脚陷地仍未根本解决**：等 kafka 重启 dev_server + 强刷 + 截图 debug 物理框
+- 📌 已开 DEBUG_PHYSICS = true，绿框 = body 位置，根据绿框 vs 角色脚的相对位置就能 100% 确定根因
+
+### 下一步
+1. kafka 重启 dev_server（让禁缓存生效）：Ctrl+C 后 `python3 dev_server.py`
+2. kafka 强刷浏览器（Cmd+Shift+R）
+3. kafka 截图/描述绿框和角色脚的位置关系
+4. 我根据绿框位置精确诊断，**不再猜测**
+
+### 关键经验沉淀（会话 10）
+1. **移动端 100vh 是 trap**：iOS Safari 算的是地址栏完全隐藏时的高度。要用 `position:fixed + height:100%`
+2. **Phaser scene 是复用实例**：所有 state 必须在 create() 显式初始化，不能依赖 constructor 或之前的 init
+3. **3 次失败立即上 debug 工具**：本会话角色穿模我试了 4 次配置都没用，应该第 2 次失败就开 DEBUG_PHYSICS 看物理框
+4. **dev_server 禁缓存改完要重启**：HTTP server 不会 reload，必须 Ctrl+C 重跑
+5. **kafka 的对比式问题是金句**：「为什么 X 工作 Y 不工作」精确指向问题边界，比让 kafka 描述现象有效 10 倍
+6. **猜测式调参是反模式**：在没确认根因前来回改数值，浪费 kafka 时间和我的信任额度
+

@@ -45,6 +45,7 @@ class BossPlayer {
         // 像素图主体
         const body = this.scene.add.image(this.x, this.y, 'wukong');
         body.setDisplaySize(size, size);
+        body.setOrigin(0.5, 1.0);  // 图片底部对齐地面
         body.setDepth(100);
         // 头顶 label
         const label = this.scene.add.text(this.x, this.y - size/2 - 18, '悟空', {
@@ -60,6 +61,7 @@ class BossPlayer {
         // 像素图主体
         const body = this.scene.add.image(this.x, this.y, 'bajie');
         body.setDisplaySize(size, size);
+        body.setOrigin(0.5, 1.0);  // 图片底部对齐地面
         body.setDepth(100);
         // 头顶 label
         const label = this.scene.add.text(this.x, this.y - size/2 - 18, '八戒', {

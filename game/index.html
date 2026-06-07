@@ -2,7 +2,11 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 关键：禁缩放 + viewport-fit=cover 让地址栏可全收起 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>西游取经 · 万象迷途</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -12,23 +16,73 @@
             background: #1a0f08;
             overflow: hidden;
             font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            /* 禁止 iOS Safari 双击/长按弹出菜单干扰游戏 */
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            /* 禁止下拉刷新 / 双指缩放 */
+            touch-action: none;
+            overscroll-behavior: none;
+            position: fixed;  /* 防止 iOS 滑动顶起 body */
+            top: 0; left: 0;
         }
         #game-container {
+            position: absolute;
+            top: 0; left: 0;
             width: 100%;
-            height: 100vh;
+            height: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
         }
         canvas {
-            box-shadow: 0 0 40px rgba(255, 102, 0, 0.3);
-            /* 不要 image-rendering: pixelated —— 这不是像素风游戏，
-               用了反而让 Retina 屏 + 缩放后的字体糊成马赛克 */
+            /* 移动端去掉阴影避免占用画面空间 */
+            display: block;
+        }
+        /* 竖屏提示遮罩 —— 只在竖屏时显示 */
+        #rotate-hint {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #1a0f08;
+            color: #FFD700;
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+        }
+        #rotate-hint .icon {
+            font-size: 72px;
+            margin-bottom: 24px;
+            animation: rotateHint 1.8s ease-in-out infinite;
+        }
+        #rotate-hint .tip {
+            font-size: 14px;
+            color: #FFCCAA;
+            margin-top: 18px;
+        }
+        @keyframes rotateHint {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(-90deg); }
+        }
+        /* 只在 portrait 竖屏下显示遮罩，横屏自动隐藏 */
+        @media (orientation: portrait) and (max-width: 900px) {
+            #rotate-hint { display: flex; }
         }
     </style>
 </head>
 <body>
     <div id="game-container"></div>
+    <div id="rotate-hint">
+        <div class="icon">📱</div>
+        <div>请横屏游玩</div>
+        <div class="tip">把手机横过来，体验更佳</div>
+    </div>
 
     <!-- Phaser 引擎（本地副本，离线可玩） -->
     <script src="lib/phaser.min.js"></script>

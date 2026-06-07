@@ -251,6 +251,48 @@ work/
 **关键技术**：flood-fill BFS + RGB 阈值 235（保守，避免误伤）
 **实际耗时**：约 15 分钟
 
+### 阶段10：手机端适配 [complete] ✅
+**触发**：kafka "现在这个游戏能直接在手机端上运行吗？"
+**输出**：
+- [x] 教 kafka 用 `ifconfig | grep "inet "` 拿局域网 IP（同热点即可访问）✅
+- [x] `index.html` head 重写：viewport-fit=cover + maximum-scale=1.0 + user-scalable=no ✅
+- [x] body 加 iOS Web App meta + apple-mobile-web-app-status-bar-style ✅
+- [x] body 加 touch-action:none + overscroll-behavior:none + user-select:none + tap-highlight:transparent ✅
+- [x] 改 `height:100vh` → `position:fixed + height:100%`（避免 iOS 地址栏吃高度）✅
+- [x] 加 `#rotate-hint` 竖屏遮罩 + CSS media query 自动检测 portrait + 📱 旋转动画 ✅
+- [x] dev_server.py end_headers 加禁缓存 3 行（需要重启 dev_server 生效）✅
+**实际耗时**：约 25 分钟
+**kafka 反馈**：横屏画面已能完整显示
+
+### 阶段11：Boss 战重启 bug 修复 [complete] ✅
+**触发**：kafka "打铁扇公主失败之后，我是不能再次进入到 boss 战的"
+**根因**：`GameScene.enterBossFight` 的防重入锁 `this.bossEntering` 在 create() 没有重置。Phaser scene 实例复用，第一次进 Boss 战后 bossEntering=true 残留，下一局永远过不去
+**修复**：`GameScene.js:17` 加 `this.bossEntering = false;`
+**实际耗时**：5 分钟（定位 + 修复）
+
+### 阶段11.5：角色脚陷地问题 [in_progress] ⏳ 未确认根因
+**触发**：kafka "悟空和八戒可以大一些"+"穿模到地面下了"
+**已尝试 4 次（全失败）**：
+1. body 高 0.85 + setOrigin(0.5, 0.92) → 仍陷地
+2. body 满高（size, size）+ 删 setOrigin → 仍陷地
+3. setOrigin Y 从 0.92 改试 0.2 / 0.97 → kafka 反馈"怎么改都不管用"
+4. PIL 裁掉 PNG 透明 padding（wukong 961→898×925，bajie 顶 126px padding→1005×899）→ 仍陷地
+
+**kafka 一句话点醒**："为什么小妖怪不陷地，悟空八戒却陷地"
+- 小妖怪是代码画 rectangle → 像素 100% 是身体
+- 悟空八戒是 PNG image → 即使裁过 padding 还是有问题
+
+**当前操作**：
+- ✅ 已开 DEBUG_PHYSICS=true（config.js:110），让物理 body 显示绿框
+- ✅ 已禁 dev_server 缓存（需重启 dev_server 生效）
+- ⏳ 等 kafka 重启 dev_server + Cmd+Shift+R 强刷 + 描述/截图绿框 vs 角色脚的相对位置
+- 根据绿框 vs 角色脚的相对位置确认 3 种可能之一：
+  - 缓存未清（绿框正常但角色还是老 PNG）
+  - PIL 裁切阈值不严（绿框正常但角色脚下还有半透明像素）
+  - body 尺寸/位置算错（绿框就在地下方）
+
+**关键反思**：本应早上 DEBUG_PHYSICS 开看物理框，不该 4 次方案猜测式调参
+
 ## 核心决策记录
 1. **交互模式**：✅ 统一跑酷 + 角色切换（平衡创新与可行性）
 2. **故事范围**：✅ 火焰山单关卡，无尽模式（专注打磨一关）
@@ -300,3 +342,7 @@ work/
 | 卡片可点击切角色（kafka 反馈：只能键盘切）| 1 | `setInteractive({useHandCursor:true})` + `pointerdown` 回调。**关键**：回调里 `event.stopPropagation()` 阻断冒泡到全局 pointerdown（否则点 UI 会同时跳跃/触发画弧手势）|
 | 结算页"总分 xxxx"框和按钮重叠（kafka 反馈）| 1 | 旧 cy+72 框底（cy+97）→ cy+125 按钮顶，只剩 28px。按钮挪 cy+150→cy+210，背景板高 420→500，间距给到 88px |
 | 像素图带白底（kafka 反馈：要去白底 + 去光圈）| 1 | PIL flood-fill 从边角向内蔓延，连通的白色像素 alpha=0。阈值 235 + 4 邻居 BFS。角色身上的眼睛/装饰因为不与边角连通而保留。Wukong/Bajie/BossPlayer 三个文件删 aura graphics 即可 |
+| 手机端访问 localhost 失败 | 1 | dev_server 监听 `*:8765`（不是 127.0.0.1），手机连同 WiFi/热点用 Mac 局域网 IP `http://10.x.x.x:8765` 访问。换网络后 IP 会变，必须重新 `ifconfig` |
+| 手机横屏画面底部被截掉 | 1 | `height:100vh` 在 iOS Safari 上算的是地址栏完全隐藏时的高度。改 `position:fixed + height:100%` + viewport-fit=cover 撑满可视区 |
+| Boss 战失败后不能再进 Boss 战（kafka 反馈）| 1 | `GameScene.enterBossFight` 的防重入锁 `this.bossEntering=true` 在 create() 没有显式重置。Phaser scene 是**实例复用**的，restart 只调 create()，不 new。第一次设的 true 永久残留 → 下一局永远过不去。修：`create()` 加 `this.bossEntering = false;` |
+| 角色脚陷地（4 次方案失败）| 4+ | 试了 body 高、setOrigin、PIL 裁切 PNG padding 全部没用。**根因仍未确认**。已开 DEBUG_PHYSICS 等 kafka 强刷看绿框位置才能继续。教训：3 次失败应立即上 debug 工具，不再猜测调参 |

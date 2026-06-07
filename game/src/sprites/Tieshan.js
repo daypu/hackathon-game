@@ -14,78 +14,22 @@ class Tieshan {
     }
 
     createVisual() {
-        // 身体：紫红色长方形（裙袍）
-        this.body = this.scene.add.rectangle(this.x, this.y, 100, 140, 0xB03060);
+        // 铁扇公主像素图
+        const size = 140;
+        this.body = this.scene.add.image(this.x, this.y, 'tieshangongzhu');
+        this.body.setDisplaySize(size, size);
+        this.body.setOrigin(0.5, 1.0);  // 底部对齐
         this.decorations.push(this.body);
 
-        // 头：肤色圆
-        this.head = this.scene.add.circle(this.x, this.y - 90, 28, 0xFFE0BD);
-        this.decorations.push(this.head);
-
-        // 头发：黑色弧
-        const hair = this.scene.add.rectangle(this.x, this.y - 100, 50, 18, 0x222222);
-        this.decorations.push(hair);
-
-        // 发髻
-        const bun = this.scene.add.circle(this.x, this.y - 118, 12, 0x222222);
-        this.decorations.push(bun);
-
-        // 眼睛
-        this.eyeL = this.scene.add.circle(this.x - 8, this.y - 88, 2.5, 0x000000);
-        this.eyeR = this.scene.add.circle(this.x + 8, this.y - 88, 2.5, 0x000000);
-        this.decorations.push(this.eyeL, this.eyeR);
-
-        // 嘴（怒）
-        this.mouth = this.scene.add.rectangle(this.x, this.y - 78, 10, 2, 0xAA0000);
-        this.decorations.push(this.mouth);
-
-        // 芭蕉扇（绿色三角形 + 把手）
-        this.fanG = this.scene.add.graphics();
-        this.fanG.x = this.x - 65;
-        this.fanG.y = this.y - 20;
-        this.drawFan();
-        this.decorations.push(this.fanG);
-
-        // 装饰：宽袖口
-        const sleeveL = this.scene.add.rectangle(this.x - 50, this.y - 10, 25, 50, 0x901040);
-        const sleeveR = this.scene.add.rectangle(this.x + 50, this.y - 10, 25, 50, 0x901040);
-        this.decorations.push(sleeveL, sleeveR);
-
-        // 进场动画：从右边飘进来（每个 decoration 独立 tween 避免数组 from/to 兼容问题）
-        this.decorations.forEach(d => {
-            const finalX = d.x;
-            d.x = finalX + 200;  // 先挪到右边
-            this.scene.tweens.add({
-                targets: d,
-                x: finalX,
-                duration: 800,
-                ease: 'Cubic.easeOut',
-            });
+        // 进场动画：从右边飘进来
+        const finalX = this.body.x;
+        this.body.x = finalX + 200;  // 先挪到右边
+        this.scene.tweens.add({
+            targets: this.body,
+            x: finalX,
+            duration: 800,
+            ease: 'Cubic.easeOut',
         });
-    }
-
-    drawFan() {
-        const g = this.fanG;
-        g.clear();
-        // 扇面
-        g.fillStyle(0x2E8B2E, 1);
-        g.beginPath();
-        g.arc(0, 0, 45, Phaser.Math.DegToRad(-60), Phaser.Math.DegToRad(60), false);
-        g.lineTo(0, 0);
-        g.closePath();
-        g.fillPath();
-        // 扇骨纹理
-        g.lineStyle(2, 0x1F5F1F, 1);
-        for (let a = -60; a <= 60; a += 20) {
-            const rad = Phaser.Math.DegToRad(a);
-            g.beginPath();
-            g.moveTo(0, 0);
-            g.lineTo(Math.cos(rad) * 45, Math.sin(rad) * 45);
-            g.strokePath();
-        }
-        // 把手
-        g.fillStyle(0x553311, 1);
-        g.fillRect(-3, -5, 6, 18);
     }
 
     /**

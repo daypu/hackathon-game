@@ -38,58 +38,29 @@ class Obstacle {
     }
 
     /**
-     * 小妖怪：绿身红眼獠牙
-     * - ground：站在地上跑
-     * - air：飘在跳跃可达高度
+     * 小妖怪：使用像素图
+     * - ground：陆地妖怪，站在地上跑
+     * - air：飞行妖怪，飘在跳跃可达高度
      */
     createMonster(x, groundY, speed, variant) {
-        const w = 38, h = 36;
+        const size = 40;
         const y = (variant === 'air')
             ? groundY - GAME_CONFIG.MONSTER_AIR_HEIGHT
-            : groundY - h / 2;
+            : groundY;
 
-        // 主体（碰撞用矩形）
-        this.visual = this.scene.add.rectangle(x, y, w, h, GAME_CONFIG.COLOR_MONSTER_BODY);
+        // 使用对应的像素图
+        const imageName = (variant === 'air') ? 'feixingyaoguai' : 'ludiyaoguai';
+        this.visual = this.scene.add.image(x, y, imageName);
+        this.visual.setDisplaySize(size, size);
+        this.visual.setOrigin(0.5, 1.0);  // 底部对齐
+
         this.scene.physics.add.existing(this.visual);
         this.visual.body.setAllowGravity(false);
         this.visual.body.setVelocityX(speed);
+        this.visual.body.setSize(size * 0.8, size * 0.8);
 
-        // 肚皮（浅绿色椭圆）
-        const belly = this.scene.add.ellipse(x, y + 4, w * 0.55, h * 0.45, GAME_CONFIG.COLOR_MONSTER_BELLY);
-
-        // 眼睛（红色）
-        const leftEye = this.scene.add.circle(x - 8, y - 6, 4, GAME_CONFIG.COLOR_MONSTER_EYE);
-        const rightEye = this.scene.add.circle(x + 8, y - 6, 4, GAME_CONFIG.COLOR_MONSTER_EYE);
-        const leftPupil = this.scene.add.circle(x - 8, y - 6, 1.5, 0x000000);
-        const rightPupil = this.scene.add.circle(x + 8, y - 6, 1.5, 0x000000);
-
-        // 獠牙（两颗小三角）
-        const tusks = this.scene.add.graphics();
-        tusks.fillStyle(GAME_CONFIG.COLOR_MONSTER_TUSK, 1);
-        // 左獠牙
-        tusks.fillTriangle(
-            x - 6, y + 4,
-            x - 3, y + 4,
-            x - 4.5, y + 11
-        );
-        // 右獠牙
-        tusks.fillTriangle(
-            x + 3, y + 4,
-            x + 6, y + 4,
-            x + 4.5, y + 11
-        );
-
-        this.decorations.push(belly, leftEye, rightEye, leftPupil, rightPupil, tusks);
-
-        // 空中款额外加：飘动的小翅膀（左右各一）+ 上下浮动
+        // 空中款：上下浮动
         if (variant === 'air') {
-            const wings = this.scene.add.graphics();
-            wings.fillStyle(0x6fbf6f, 0.8);
-            wings.fillTriangle(x - w/2 - 6, y - 2, x - w/2, y - 8, x - w/2, y + 4);
-            wings.fillTriangle(x + w/2 + 6, y - 2, x + w/2, y - 8, x + w/2, y + 4);
-            this.decorations.push(wings);
-
-            // 上下漂浮（视觉，不影响物理）
             this.scene.tweens.add({
                 targets: this.visual,
                 y: y - 8,

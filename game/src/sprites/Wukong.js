@@ -19,8 +19,11 @@ class Wukong extends Player {
         // 像素图替代橙方块（保持 hitbox 尺寸 = this.size）
         this.visual = this.scene.add.image(this.x, this.y, 'wukong');
         this.visual.setDisplaySize(this.size, this.size);
+        // 关键：setOrigin(0.5, 1.0) 让图片底部作为锚点 → 图片底边 = 物理体底边 = 地面
+        this.visual.setOrigin(0.5, 1.0);
         this.scene.physics.add.existing(this.visual);
-        this.visual.body.setSize(this.size * 0.7, this.size * 0.85);  // hitbox 略小于贴图，体验更宽容
+        // body 满高度，宽度 0.7 保留命中宽容
+        this.visual.body.setSize(this.size * 0.7, this.size);
         this.visual.body.setCollideWorldBounds(true);
     }
 

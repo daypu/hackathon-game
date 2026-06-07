@@ -12,6 +12,9 @@ class BootScene extends Phaser.Scene {
         this.load.image('wukong', 'assets/images/wukong.png');
         this.load.image('bajie', 'assets/images/bajie.png');
         this.load.image('huoyanshan', 'assets/images/huoyanshan.png');
+        this.load.image('tieshangongzhu', 'assets/images/tieshangongzhu.png');
+        this.load.image('feixingyaoguai', 'assets/images/feixingyaoguai.png');
+        this.load.image('ludiyaoguai', 'assets/images/ludiyaoguai.png');
 
         // 加载提示
         const loadingText = this.add.text(
